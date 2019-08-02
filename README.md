@@ -1,7 +1,7 @@
 pymreasoner - mReasoner for Python
 ==================================
 
-Python Interface for the cognitive inference model mReasoner by Sangeet Khemlani and Phil Johnson-Laird
+Python Interface for the cognitive inference model mReasoner by Sangeet Khemlani and Phil Johnson-Laird.
 
 > Khemlani, S., & Johnson-Laird, P. N. (2013). The processes of inference. *Argument & Computation*, 4, 1-20.
 
