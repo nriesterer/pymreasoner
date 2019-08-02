@@ -37,9 +37,16 @@ class ClozureCL():
             urllib.request.urlretrieve(dl_url, dl_target)
 
             # Unarchive the binaries
-            if self.system == 'Darwin':
+            if self.system == 'Darwin' or self.system == 'Linux':
                 logger.debug('Untaring "{}"->"{}"...'.format(dl_target, self.ccl_dir))
                 self.untar(dl_target, self.ccl_dir)
+            elif self.system == 'Windows':
+                logger.debug('Unzipping "{}"->"{}"...'.format(dl_target, self.ccl_dir))
+                self.unzip(dl_target, self.ccl_dir)
+            else:
+                raise ValueError(
+                    'Unsupported platform ({}). Please contact the package maintainer.'.format(
+                        self.system))
 
         # Extract the 64 bit executable
         self.ccl_path = None
@@ -55,15 +62,17 @@ class ClozureCL():
         return self.ccl_path
 
     def unzip(self, source, target):
-        #     # Extract the archive
-        #     with zipfile.ZipFile(dl_path, 'r') as zip_ref:
-        #         zip_ref.extractall(destination)
-        pass
+        if not source.endswith('zip'):
+            raise ValueError('Not a zip file: "{}"'.format(source))
+
+        with zipfile.ZipFile(source, 'r') as zip_ref:
+            zip_ref.extractall(target)
 
     @staticmethod
     def untar(source, target):
         if not source.endswith('tar.gz'):
-            raise ValueError('Not a tar.gz file: {}'.format(source))
+            raise ValueError('Not a tar.gz file: "{}"'.format(source))
+
 
         with tarfile.open(source) as tar:
             tar.extractall(path=target)
