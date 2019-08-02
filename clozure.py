@@ -52,7 +52,7 @@ class ClozureCL():
         self.ccl_path = None
         for fname in os.listdir(self.ccl_dir):
             fpath = self.ccl_dir + os.sep + fname
-            if os.path.isdir(fpath):
+            if os.path.isdir(fpath) or fname.endswith('.image'):
                 continue
             if ('cl64' in fname) and os.access(fpath, os.X_OK):
                 self.ccl_path = fpath
