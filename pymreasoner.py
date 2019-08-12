@@ -1,20 +1,32 @@
+""" pymreasoner entry point. Serves as a test environment for development.
+
+"""
+
 import logging
 
 import mreasoner
 import clozure
 
-# Setup logger
-logging.basicConfig(level=logging.DEBUG)
+def main():
+    """ Entry point function.
 
-# Initialize LISP
-cl = clozure.ClozureCL()
+    """
 
-# Initialize MReasoner instance
-mr = mreasoner.MReasoner(
-    ccl_path=cl.exec_path(),
-    mreasoner_dir='mReasoner'
-)
+    # Setup logger
+    logging.basicConfig(level=logging.DEBUG)
 
-print('Query result: {}'.format(mr.query('IA4')))
+    # Initialize LISP
+    cloz = clozure.ClozureCL()
 
-mr.terminate()
+    # Initialize MReasoner instance
+    mreas = mreasoner.MReasoner(
+        ccl_path=cloz.exec_path(),
+        mreasoner_dir='mReasoner'
+    )
+
+    print('Query result: {}'.format(mreas.query('IA4')))
+
+    mreas.terminate()
+
+if __name__ == '__main__':
+    main()

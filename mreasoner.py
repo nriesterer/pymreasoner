@@ -1,3 +1,8 @@
+""" mReasoner interface.
+
+"""
+
+import os
 import logging
 import subprocess
 import threading
@@ -29,8 +34,8 @@ class MReasoner():
         self.proc = subprocess.Popen(
             [ccl_path],
             stdin=subprocess.PIPE,
-            stdout = subprocess.PIPE,
-            stderr = subprocess.STDOUT
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
         )
 
         # Instantiate the result queue
@@ -45,7 +50,7 @@ class MReasoner():
             while True:
                 # Read text from mReasoner output
                 text = proc.stdout.readline().decode('ascii').strip()
-                logger.debug('mReasoner:{}'.format(text))
+                logger.debug('mReasoner:%s', text)
 
                 # Ignore comments and query results
                 if text.startswith(';') or text.startswith('?'):
@@ -62,7 +67,7 @@ class MReasoner():
                     logger.debug('RESULT observed!')
                     proc.stdout.readline()
                     text = proc.stdout.readline().decode('ascii').strip().replace('"', '')
-                    logger.info('Queue-Result:{}'.format(text))
+                    logger.info('Queue-Result:%s', text)
                     self.resp_queue.put(text)
 
             logger.debug('terminating...')
@@ -71,19 +76,22 @@ class MReasoner():
         self.readerstdout.start()
 
         # Load mReasoner and setup result variable
-        self._send('(load "mReasoner/+mReasoner.lisp")')
+        mreasoner_file = mreasoner_dir + os.sep + "+mReasoner.lisp"
+        self._send('(load "{}")'.format(mreasoner_file))
         self._send('(defvar resp 0)')
 
         # Initialize parameter values
-        self.p_epsilon = 0.0
-        self.p_lambda = 4.0
-        self.p_omega = 1.0
-        self.p_sigma = 0.0
+        self.params = {
+            'epsilon': 0.0,
+            'lambda': 4.0,
+            'omega': 1.0,
+            'sigma': 0.0
+        }
 
-        self.set_param('epsilon', self.p_epsilon)
-        self.set_param('lambda', self.p_lambda)
-        self.set_param('omega', self.p_omega)
-        self.set_param('sigma', self.p_sigma)
+        self.set_param('epsilon', self.params['epsilon'])
+        self.set_param('lambda', self.params['lambda'])
+        self.set_param('omega', self.params['omega'])
+        self.set_param('sigma', self.params['sigma'])
 
     def _send(self, cmd):
         """ Send a command to the Clozure Common LISP subprocess.
@@ -98,7 +106,7 @@ class MReasoner():
         # Normalize the command
         cmd.strip()
 
-        self.logger.debug('Send:{}'.format(cmd))
+        self.logger.debug('Send:%s', cmd)
         self.proc.stdin.write('{}\n'.format(cmd).encode('ascii'))
         self.proc.stdin.flush()
 
@@ -132,9 +140,9 @@ class MReasoner():
             '4': [['B', 'A'], ['B', 'C']]
         }
 
-        p1 = template_quant[syllog[0]].format(*template_fig[syllog[-1]][0])
-        p2 = template_quant[syllog[1]].format(*template_fig[syllog[-1]][1])
-        return p1, p2
+        prem1 = template_quant[syllog[0]].format(*template_fig[syllog[-1]][0])
+        prem2 = template_quant[syllog[1]].format(*template_fig[syllog[-1]][1])
+        return prem1, prem2
 
     def query(self, syllog):
         """ Queries mReasoner for a prediction for a given syllogistic problem.
@@ -156,13 +164,13 @@ class MReasoner():
         # Send the conclusion generation query
         cmd = "(what-follows? (list (parse '({})) (parse '({}))))".format(prem1, prem2)
         cmd = '(setf resp {})'.format(cmd)
-        self.logger.info('Query:{}'.format(cmd))
+        self.logger.info('Query:%s', cmd)
         self._send(cmd)
 
         # Send the result interpretation query
         cmd = '(abbreviate (first resp))'
         cmd = '(prin1 "RESULT")(prin1 {})'.format(cmd)
-        self.logger.info('Query:{}'.format(cmd))
+        self.logger.info('Query:%s', cmd)
         self._send(cmd)
 
         return self.resp_queue.get()
@@ -191,20 +199,18 @@ class MReasoner():
         value : float
             Parameter value.
 
+        Raises
+        ------
+        ValueError
+            If invalid param is specified.
+
         """
 
-        if param not in ['epsilon', 'lambda', 'omega', 'sigma']:
+        if param not in self.params:
             raise ValueError('Attempted to set invalid parameter: {}'.format(param))
-
-        if param == 'epsilon':
-            self.p_epsilon = value
-        elif param == 'lambda':
-            self.p_lambda = value
-        elif param == 'omega':
-            self.p_omega = value
-        elif param == 'sigma':
-            self.p_omega = value
+        self.params[param] = value
 
         # Send parameter change to mReasoner
         cmd = '(setf +{}+ {:f})'.format(param, value)
-        self.logger.info('Param-Set: {}->{}:{}'.format(param, value, cmd))
+        self.logger.info('Param-Set: %s->%f:%s', param, value, cmd)
+        self._send(cmd)
