@@ -8,6 +8,8 @@ import subprocess
 import threading
 import queue
 
+import scipy.optimize as so
+
 class MReasoner():
     """ LISP mReasoner wrapper. Executes a Clozure Common LISP subprocess to run an unmodified
     version of mReasoner. Provides basic interfacing mechanisms for inference generation and
@@ -60,14 +62,18 @@ class MReasoner():
                 if 'TERMINATE' in text:
                     logger.debug('termination handling initiated...')
                     break
+                if ('While executing:' in text) or ('Error:' in text):
+                    self.resp_queue.put('HALT')
+
 
                 # Catch mReasoner computation output
                 if text == '"RESULT"':
                     # Actual result is in line 2 after
                     logger.debug('RESULT observed!')
-                    proc.stdout.readline()
                     text = proc.stdout.readline().decode('ascii').strip().replace('"', '')
-                    logger.info('Queue-Result:%s', text)
+                    logger.debug('Ignoring:%s', text)
+                    text = proc.stdout.readline().decode('ascii').strip().replace('"', '')
+                    logger.debug('Queue-Result:%s', text)
                     self.resp_queue.put(text)
 
             logger.debug('terminating...')
@@ -164,16 +170,21 @@ class MReasoner():
         # Send the conclusion generation query
         cmd = "(what-follows? (list (parse '({})) (parse '({}))))".format(prem1, prem2)
         cmd = '(setf resp {})'.format(cmd)
-        self.logger.info('Query:%s', cmd)
+        self.logger.debug('Query:%s', cmd)
         self._send(cmd)
 
         # Send the result interpretation query
         cmd = '(abbreviate (first resp))'
         cmd = '(prin1 "RESULT")(prin1 {})'.format(cmd)
-        self.logger.info('Query:%s', cmd)
+        self.logger.debug('Query:%s', cmd)
         self._send(cmd)
 
-        return self.resp_queue.get()
+        # Retrieve queue output
+        queue_out = self.resp_queue.get()
+        if queue_out == 'HALT':
+            exit()
+
+        return queue_out
 
     def terminate(self):
         """ Terminate mReasoner and its parent instance of Clozure Common LISP.
@@ -214,3 +225,78 @@ class MReasoner():
         cmd = '(setf +{}+ {:f})'.format(param, value)
         self.logger.info('Param-Set: %s->%f:%s', param, value, cmd)
         self._send(cmd)
+
+    def _fit_fun(self, x, *args):
+        """ Fitting helper function. Receives parameter values and computes accuracy on given
+        training and test data.
+
+        Parameters
+        ----------
+        x : list(float)
+            List of parameters.
+
+        Results
+        -------
+        float
+            Predictive accuracy.
+
+        """
+
+        train_x, train_y = args
+
+        # Set the parameters
+        param_names = ['epsilon', 'lambda', 'omega', 'sigma']
+        for idx in range(len(x)):
+            self.set_param(param_names[idx], x[idx])
+
+        hits = 0
+        for idx in range(len(train_x)):
+            task = train_x[idx]
+            resp = train_y[idx]
+
+            pred = self.query(task)
+
+            hits += (resp == pred)
+
+        acc = hits / len(train_x)
+        self.logger.info('Fitting (p=%s): %f', x, acc)
+        return acc
+
+    def fit(self, train_x, train_y, num_fits=10):
+        """ Fits mReasoner parameters to the specified data.
+
+        Parameters
+        ----------
+        train_x : list(str)
+            List of syllogistic task encodings (e.g., 'AA1').
+
+        train_y : list(str)
+            List of syllogistic response encodings (e.g., 'Aac').
+
+        Returns
+        -------
+        float
+            Fit result accuracy.
+
+        """
+
+        self.logger.info('Fitting!')
+
+        results = []
+        for _ in range(num_fits):
+            start_params = [x[1] for x in sorted(self.params.items())]
+            param_bounds = [[0.0, 1.0], [0.1, 8.0], [0.0, 1.0], [0.0, 1.0]]
+
+            res = so.minimize(
+                self._fit_fun,
+                start_params,
+                method='L-BFGS-B',
+                bounds=param_bounds,
+                args=(train_x, train_y))
+
+            if res.success:
+                results.append((res.fun, res.x))
+
+        print(results)
+
+        return 0
