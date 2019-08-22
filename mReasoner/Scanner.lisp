@@ -60,7 +60,7 @@ form-initial-conclusion
         (2 (setf concl-lis (figure-2 intension1 intension2)))
         (3 (setf concl-lis (figure-3 intension1 intension2)))
         (4 (setf concl-lis (figure-4 intension1 intension2))))))
-   (list (first (check-conclusions concl-lis model)))))
+   (check-conclusions concl-lis model)))
 
 (defmethod check-conclusions (concl-lis (model q-model))
   "ok checks conclusions and puts them into English using *lexicon*

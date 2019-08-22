@@ -33,6 +33,20 @@
       (helper-find-ref-in-model (list referent 'START) (moments model))
       (helper-find-ref-in-model (list referent 'END) (moments model))))
 
+(defmethod find-referent-in-model (referent (model sp-model))
+  (thing-position referent (things model)))
+
+(defun thing-position (thing things)
+  "Gets position of a specified object (thing) from list representing a vector (depth = 2), matrix (depth = 3),
+   or 3D grid (depth = 4)."
+  (let ((tester  (lambda (x y) (member x (flatten y) :test #'equals))))
+    (case (depth things)
+      (2 (position thing things :test tester))
+      (3 (let* ((list-pos (position thing things :test tester)))
+           (when list-pos (list list-pos (thing-position thing (nth list-pos things))))))
+      (4 (let* ((list-pos (position thing things :test tester)))
+           (when list-pos (append (list list-pos) (thing-position thing (nth list-pos things)))))))))
+
 (defmethod find-referent-in-model (referent (model s-model))
   (if (is-atomic-model model)
       (find-referent-in-modelset (list referent) (list (possibilities model)))
@@ -140,6 +154,9 @@
 
 (defmethod equals ((a list) (b list))
   (equal a b))
+
+(defmethod equals ((a string) (b string))
+  (string-equal a b))
 
 (defmethod equals (a b)
   (when (equals (type-of a) (type-of b))
@@ -274,6 +291,18 @@
            (t (error "Abbreviation error: Assertion not supported by mReasoner."))))
     mood))
 
+(defmethod abbreviate ((intension t-intension))
+ (let ((rel (string-downcase (relation intension)))
+       (subj (aref (string-downcase (subject intension)) 0))
+       (obj  (aref (string-downcase (object intension)) 0)))
+   (format nil "~A(~A,~A)" rel subj obj)))
+
+(defmethod abbreviate ((intension sp-intension))
+ (let ((rel  (string-downcase (relation intension)))
+       (subj (string-downcase (subject intension)))
+       (obj  (string-downcase (object intension))))
+   (format nil "~A(~A,~A)" rel subj obj)))
+
 (defmethod abbreviate ((intension s-intension))
   (cond
    ((is-affirmative-atom intension) (format nil "~A" (first-clause intension)))
@@ -286,10 +315,11 @@
    ((is-iff intension) (format nil "iff(~A,~A)" (abbreviate (first-clause intension)) (abbreviate (second-clause intension))))
    ((is-not intension) (format nil "not(~A)" (abbreviate (first-clause intension))))))
 
-(defmethod abbreviate ((intension t-intension))
- (let ((subj (aref (string-downcase (subject intension)) 0))
-       (obj  (aref (string-downcase (object intension)) 0)))
-   (format nil "~A~A~A" subj (relation intension) obj)))
+(defmethod abbreviate ((intension c-intension))
+  (cond
+     ((is-cause intension) (format nil "cause(~A,~A)" (abbreviate (first-clause intension)) (abbreviate (second-clause intension))))
+     ((is-enable intension) (format nil "enable(~A,~A)" (abbreviate (first-clause intension)) (abbreviate (second-clause intension))))
+     ((is-prevent intension) (format nil "prevent(~A,~A)" (abbreviate (first-clause intension)) (abbreviate (second-clause intension))))))
 
 (defmethod get-syllogistic-figure ((premise-1 q-intension) (premise-2 q-intension)) ; pjl, slight mods from ssk + ml
   "Determines figure of the two premises by establishing the respective
@@ -633,7 +663,7 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
   (remove-duplicates (append indiv-1 indiv-2) :test #'property-equal))
 
 ; ---------------------------------------------------------------------------------
-; Section 1.7: S-model Functions
+; Section 1.7: S-model functions
 ; ---------------------------------------------------------------------------------
 
 (defun is-atomic-model (model)
@@ -661,7 +691,7 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
   model)
 
 ; ---------------------------------------------------------------------------------
-; Section 1.9: Q-intension Functions
+; Section 1.9: Intension functions
 ; ---------------------------------------------------------------------------------
 
 (defmethod cardinality-value ((intension q-intension))
@@ -774,23 +804,83 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
   "Outputs relation of assertion
    (relation (parse '(A happened before B))) => B "
   (cond
-   ((is-before intension) 'B)
-   ((is-after intension) 'A)
-   ((is-while intension) 'W)
-   ((is-during intension) 'D)
+   ((is-before intension) 'before)
+   ((is-after intension) 'after)
+   ((is-while intension) 'while)
+   ((is-during intension) 'during)
    (t (error "Assertion cannot be intrepreted"))))
 
-(defmethod negate ((int intension))
-  "Negates an s-intension by swapping impossible states to possible
-   and vice versa. Handles atoms specially (swaps between first-only and
-   neither)"
-  (make-instance 's-intension
-                 :first-clause int
-                 :second-clause nil
-                 :first-only  'impossible
-                 :second-only nil
-                 :both        nil
-                 :neither     nil))
+(defmethod is-right ((intension sp-intension))
+  "If intension is 'right' relation, rtn it, else nil"
+  (when (and (equals (spatial-relation intension) '+)
+             (equals (spatial-dimension intension) :left-right))
+    intension))
+
+(defmethod is-left ((intension sp-intension))
+  "If intension is 'left' relation, rtn it, else nil"
+  (when (and (equals (spatial-relation intension) '-)
+             (equals (spatial-dimension intension) :left-right))
+    intension))
+
+(defmethod is-above ((intension sp-intension))
+  "If intension is 'above' relation, rtn it, else nil"
+  (when (and (equals (spatial-relation intension) '+)
+             (equals (spatial-dimension  intension) :below-above))
+    intension))
+
+(defmethod is-below ((intension sp-intension))
+  "If intension is 'below' relation, rtn it, else nil"
+  (when (and (equals (spatial-relation intension) '-)
+             (equals (spatial-dimension intension) :below-above))
+    intension))
+
+(defmethod is-front ((intension sp-intension))
+  "If intension is 'front' relation, rtn it, else nil"
+  (when (and (equals (spatial-relation intension) '+)
+             (equals (spatial-dimension intension) :behind-front))
+    intension))
+
+(defmethod is-behind ((intension sp-intension))
+  "If intension is 'behind' relation, rtn it, else nil"
+  (when (and (equals (spatial-relation intension) '-)
+             (equals (spatial-dimension intension) :behind-front))
+    intension))
+
+(defmethod is-between ((intension sp-intension))
+  "If intension is 'between' relation, rtn it, else nil"
+  (let* ((template (spatial-template intension))
+         (middle (first-argument intension))
+         (sides  (second-argument intension)))
+      (when (and template
+                 (symbolp middle)
+                 (listp sides)
+                 (member (list (first sides) middle (second sides)) template :test #'equals)
+                 (member (list (second sides) middle (first sides)) template :test #'equals))
+        intension)))
+
+(defmethod is-same ((intension sp-intension))
+  "If intension is 'in same place' relation, rtn it, else nil"
+  (when (equals (spatial-relation intension) :equal)
+    intension))
+
+(defmethod is-different ((intension sp-intension))
+  "If intension is 'in different place' relation, rtn it, else nil"
+  (when (equals (spatial-relation intension) :not-equal)
+    intension))
+
+(defmethod relation ((intension sp-intension))
+  "Outputs relation of assertion
+   (relation (parse '(A is behind B))) => B "
+  (cond
+   ((is-right intension)     'right)
+   ((is-left intension)      'left)
+   ((is-above intension)     'above)
+   ((is-below intension)     'below)
+   ((is-front intension)     'front)
+   ((is-behind intension)    'behind)
+   ((is-same intension)      'same)
+   ((is-different intension) 'different)
+   (t (error "Assertion cannot be intrepreted"))))
 
 (defmethod is-possible (modal-status)
   (or (equal modal-status 'possible)
@@ -822,6 +912,7 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
 (defmethod is-negative-atom ((intension s-intension))
   "If intension is a negative atom '-A', rtn it, else nil"
   (when (and (first-clause intension)
+             (symbolp (first-clause intension))
              (null (second-clause intension))
              (is-impossible (first-only intension))
              (null (second-only intension))
@@ -872,7 +963,8 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
 
 (defmethod is-if ((intension s-intension))
   "If intension is a conditional (A -> B), rtn it, else nil"
-  (when (and (is-impossible (first-only intension))
+  (when (and (equals 'S-INTENSION (type-of intension))
+             (is-impossible (first-only intension))
              (is-possible   (second-only intension))
              (is-possible   (both intension))
              (is-possible   (neither intension)))
@@ -887,11 +979,33 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
     intension))
 
 (defmethod is-not ((intension s-intension))
-  "If intension is a negation (A <-> B), rtn it, else nil"
-  (when (and (is-impossible (first-only intension))
+  "If intension is a sentential negation, e.g., not(A <-> B), rtn it, else nil"
+  (when (and (typep (first-clause intension) 'intension)
+             (is-impossible (first-only intension))
              (null (second-only intension))
              (null (both intension))
              (null (neither intension)))
+    intension))
+
+(defmethod is-cause ((intension c-intension))
+  "If intension is a cause, rtn it, else nil"
+  (when (and (is-impossible (first-only intension))
+             (is-possible   (both intension))
+             (is-possible   (neither intension)))
+    intension))
+
+(defmethod is-enable ((intension c-intension))
+  "If intension represents an enabling condition, rtn it, else nil"
+  (when (and (is-possible (first-only intension))
+             (is-possible (both intension))
+             (is-possible (neither intension)))
+    intension))
+
+(defmethod is-prevent ((intension c-intension))
+  "If intension represents an prevention condition, rtn it, else nil"
+  (when (and (is-possible (first-only intension))
+             (is-possible (second-only intension))
+             (is-possible (neither intension)))
     intension))
 
 (defun reverse-modal (x)
@@ -905,20 +1019,8 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
    ((equal x 'impossible)
     'possible)))
 
-(defmethod negate ((int s-intension))
-  "Negates an s-intension by swapping impossible states to possible
-   and vice versa. Handles atoms specially (swaps between first-only and
-   neither)"
-  (make-instance 's-intension
-                 :first-clause  (first-clause int)
-                 :second-clause (second-clause int)
-                 :first-only  (reverse-modal (first-only int))
-                 :second-only  (reverse-modal (second-only int))
-                 :both    (reverse-modal (both int))
-                 :neither (reverse-modal (neither int))))
-
 ; ---------------------------------------------------------------------------------
-; Section 1.11: Tracer classes and functions
+; Section 1.11: Tracer classe and functions
 ; ---------------------------------------------------------------------------------
 
 (defclass tracer ()
@@ -932,7 +1034,9 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
    (trace         :accessor trace-output   :initarg :tr  :initform nil))
   (:documentation "Class for tracer logging"))
 
-(defparameter *tracer* (make-instance 'tracer))
+(defparameter *tracer* (make-instance 'tracer)
+  "Parameter that holds any tracing information during the course of any 'run' of
+   an inference.")
 
 (defun compute-runtime ()
   "Converts runtime to process cycle"
@@ -1014,3 +1118,394 @@ It assumes that individuals will be properly formed (ie, no repeat properties).
     (trc "Printer" (format nil "Printing model ~A" model))
     (dolist (line lines)
       (trc "" line))))
+
+; ---------------------------------------------------------------------------------
+; Section 1.12: Command-line arguments
+; ---------------------------------------------------------------------------------
+
+(defun get-command-line-arguments ()
+  (if (find-package :cl-launch)
+    (symbol-value (find-symbol (string :*arguments*) :cl-launch))
+    (progn
+      #+sbcl (cdr sb-ext:*posix-argv*)
+      #+clozure (cdr (ccl::command-line-arguments))
+      #+gcl (cdr si:*command-args*)
+      #+ecl (loop for i from 1 below (si:argc) collect (si:argv i))
+      #+cmu (cdr extensions:*command-line-strings*)
+      #+allegro (cdr (sys:command-line-arguments))
+      #+lispworks (cdr sys:*line-arguments-list*)
+      #+clisp ext:*args*
+      #-(or sbcl clozure gcl ecl cmu allegro lispworks clisp)
+      (error "get-command-line-arguments not supported for your implementation"))))
+
+(defun run-system-command (command args)
+  #+ccl (run-program command args :output *standard-output*))
+
+(defun find-argument (arg)
+(let ((argument (member arg (get-command-line-arguments) :test #'string-equal)))
+   (when argument (if (> (length argument ) 1) (second argument) argument))))
+
+; ---------------------------------------------------------------------------------
+; Section 1.13: JSON utility functions
+; ---------------------------------------------------------------------------------
+
+(defun read-from-json (input)
+  (let ((in (open (file-path input) :if-does-not-exist nil))
+        (json " "))
+    (when in
+      (loop for line = (read-line in nil)
+            while line do 
+            (progn
+              (setf json (concatenate 'string json (format nil "~A~%" line)))))
+      (close in))
+    (jsown:parse json)))
+
+(defun write-to-json (json output)
+  (with-open-file (out output :direction :output :if-exists :supersede)
+    (format out (jsown:to-json json))))
+
+; ---------------------------------------------------------------------------------
+; Section 1.14: mReasoner REPL
+; ---------------------------------------------------------------------------------
+
+(defmacro handling-errors (&body body)
+  `(HANDLER-CASE (progn ,@body)
+     (simple-condition 
+         (ERR) 
+       (format *error-output* "~&~A: ~%" (class-name (class-of err)))
+       (apply (function format) *error-output*
+              (simple-condition-format-control   err)
+              (simple-condition-format-arguments err))
+       (format *error-output* "~&"))
+     (condition 
+         (ERR) 
+       (format *error-output* "~&~A: ~%  ~S~%"
+               (class-name (class-of err)) err))))
+
+(defun mreasoner-repl ()
+  (do ((+eof+ (gensym))
+       (hist 1 (1+ hist)))
+      (nil)
+    (format t "~%~A [~D]> " "mReasoner" hist)
+    (handling-errors
+     (setf +++ ++   ++ +   + -   - (read *standard-input* nil +eof+))
+     (when (or (eq - +eof+)
+               (member - '((quit)(exit)(continue)) :test (function equal)))
+       (return-from mreasoner-repl))
+     (setf /// //   // /   / (multiple-value-list (eval -)))
+     (setf *** **   ** *   * (first /))
+     (format t "~& --> ~{~S~^ ;~%     ~}~%" /))))
+
+; ---------------------------------------------------------------------------------
+; Section 1.15: Deliver standalone executable for Syllogism Challenge
+; ---------------------------------------------------------------------------------
+
+(defun print-syllogism-challenge-header ()
+	(format t "---------------------------------------------------------------~%~
+	           mReasoner version ~A (~A)                                     ~%~
+                   Binary for Ragni and colleagues' Syllogism Challenge          ~%~
+	           Copyright (C) 2017 by S. Khemlani and P.N. Johnson-Laird      ~%~
+                                                                                 ~%~
+                   Type '(syllogism-challenge \"AA1\")' to run the syllogism     ~%~
+                   challenge using the default parameter settings. To modify the ~%~
+                   parameter settings, type '(manual)'. Type '(quit)' to quit    ~%~
+                   mReasoner.                                                    ~%~
+                                                                                 ~%~
+                   This software is licensed under a Creative Commons Attribution-~%~
+                   NonCommercial-ShareAlike 4.0 International License. For more  ~%~
+                   information on this license, please visit:                    ~%~
+                                                                                 ~%~
+                          http://creativecommons.org/licenses/by-nc-sa/4.0/      ~%~
+		   ---------------------------------------------------------------~%"
+                *version*
+                "2017-09-06"))
+
+(defun get-syllogistic-premises (syllogism)
+  (let* ((syllogisms '(("AA1" (list Aab Abc)) ("AA2" (list Aba Acb)) ("AA3" (list Aab Acb)) ("AA4" (list Aba Abc))
+                       ("AI1" (list Aab Ibc)) ("AI2" (list Aba Icb)) ("AI3" (list Aab Icb)) ("AI4" (list Aba Ibc))
+                       ("AE1" (list Aab Ebc)) ("AE2" (list Aba Ecb)) ("AE3" (list Aab Ecb)) ("AE4" (list Aba Ebc))
+                       ("AO1" (list Aab Obc)) ("AO2" (list Aba Ocb)) ("AO3" (list Aab Ocb)) ("AO4" (list Aba Obc))
+                       ("IA1" (list Iab Abc)) ("IA2" (list Iba Acb)) ("IA3" (list Iab Acb)) ("IA4" (list Iba Abc))
+                       ("II1" (list Iab Ibc)) ("II2" (list Iba Icb)) ("II3" (list Iab Icb)) ("II4" (list Iba Ibc))
+                       ("IE1" (list Iab Ebc)) ("IE2" (list Iba Ecb)) ("IE3" (list Iab Ecb)) ("IE4" (list Iba Ebc))
+                       ("IO1" (list Iab Obc)) ("IO2" (list Iba Ocb)) ("IO3" (list Iab Ocb)) ("IO4" (list Iba Obc))
+                       ("EA1" (list Eab Abc)) ("EA2" (list Eba Acb)) ("EA3" (list Eab Acb)) ("EA4" (list Eba Abc))
+                       ("EI1" (list Eab Ibc)) ("EI2" (list Eba Icb)) ("EI3" (list Eab Icb)) ("EI4" (list Eba Ibc))
+                       ("EE1" (list Eab Ebc)) ("EE2" (list Eba Ecb)) ("EE3" (list Eab Ecb)) ("EE4" (list Eba Ebc))
+                       ("EO1" (list Eab Obc)) ("EO2" (list Eba Ocb)) ("EO3" (list Eab Ocb)) ("EO4" (list Eba Obc))
+                       ("OA1" (list Oab Abc)) ("OA2" (list Oba Acb)) ("OA3" (list Oab Acb)) ("OA4" (list Oba Abc))
+                       ("OI1" (list Oab Ibc)) ("OI2" (list Oba Icb)) ("OI3" (list Oab Icb)) ("OI4" (list Oba Ibc))
+                       ("OE1" (list Oab Ebc)) ("OE2" (list Oba Ecb)) ("OE3" (list Oab Ecb)) ("OE4" (list Oba Ebc))
+                       ("OO1" (list Oab Obc)) ("OO2" (list Oba Ocb)) ("OO3" (list Oab Ocb)) ("OO4" (list Oba Obc))))
+         (syllogistic-premises (find syllogism syllogisms :test #'(lambda (x y) (equal x (first y))))))
+    (if syllogistic-premises
+      (eval (second syllogistic-premises))
+      (error "Improperly formatted syllogism code"))))
+
+#+ccl (defun syllogism-challenge (syllogism &key (directory "~/") (lambda 3.0) (epsilon 0.45) (sigma 0.5) (omega 1.0) (N 1))
+         (initialize-tracer :verbose t)
+              (parameter-search
+               (list (list (get-syllogistic-premises syllogism)
+                           "What follows?" '() T lambda epsilon sigma omega syllogism NIL NIL T))
+               :directory directory :N N :verbose nil :parameters (list (list lambda epsilon sigma omega))))
+
+#+ccl (defun syllogism-challenge-main ()
+	(if (> (length (get-command-line-arguments)) 0)
+            (let ((syllogism (find-argument "-syllogism"))
+                  (directory (find-argument "-directory"))
+                  (lambda (read-from-string (find-argument "-lambda")))
+                  (epsilon (read-from-string (find-argument "-epsilon")))
+                  (sigma (read-from-string (find-argument "-sigma")))
+                  (omega (read-from-string (find-argument "-omega")))
+                  (N (read-from-string (find-argument "-N"))))
+             ;(initialize-tracer :verbose nil)
+              (format t "~74@<Initializing mReasoner 0.9.6245...~>[DONE]~%")
+              (format t "~74@<~A~>[DONE]~%"
+                     (format nil "Setting parameters as follows: ~A = ~A, ~A = ~A, ~A = ~A, ~A = ~A" 
+                             #\u+03bb lambda #\u+025b epsilon #\u+03c3 sigma #\u+03c9 omega))
+             (format t "~74@<~A~>"
+                     (format nil "Generating synthetic data for ~A participants..." N))
+             (parameter-search
+               (list (list (get-syllogistic-premises syllogism)
+                           "What follows?" '() T lambda epsilon sigma omega syllogism  NIL NIL T))
+               :directory directory :N N :verbose nil :parameters (list (list lambda epsilon sigma omega)))
+             (format t "[DONE]~%")
+             (format t "~74@<~A~>[DONE]~%"
+                     (format nil "Writing data to ~A ..." directory)))
+          (progn
+            (print-syllogism-challenge-header)
+            (mreasoner-repl))))
+
+; ---------------------------------------------------------------------------------
+; Section 1.16: Deliver standalone executable for CMRAS system (CCL)
+; ---------------------------------------------------------------------------------
+
+(defun print-cmras-header ()
+  (format t "---------------------------------------------------------------~%~
+	     mReasoner version ~A (~A)                                      ~%~
+             CMRAS system for spatial reasoning                             ~%~
+	     Copyright (C) 2018 by S. Khemlani and P.N. Johnson-Laird       ~%~
+                                                                            ~%~
+             This software is licensed under a Creative Commons Attribution-~%~
+             NonCommercial-ShareAlike 4.0 International License. For more   ~%~
+             information on this license, please visit:                     ~%~
+                                                                            ~%~
+                    http://creativecommons.org/licenses/by-nc-sa/4.0/       ~%~
+             ---------------------------------------------------------------~%"
+                *version* "2018-10-05"))
+
+(defmethod to-json-object (instance)
+  (let* ((class       (class-of instance))
+         (slots       (class-slots class))
+         json)
+    (loop for slot in slots do
+          (let ((slot-name (symbol-name (slot-definition-name slot)))
+                (slot-val (slot-value instance (slot-definition-name slot))))
+            #|(format t "~A ~A~%" slot-name slot-val)|#
+            (cond
+             ((or (equal t slot-val) (null slot-val) (numberp slot-val) (stringp slot-val))
+              (setf json (append json (list (cons slot-name (jsown:to-json slot-val))))))
+             ((symbolp slot-val)
+              (setf json (append json (list (cons slot-name (symbol-name slot-val))))))
+             ((or (listp slot-val) (typep slot-val 'intension) (typep slot-val 'model))
+              (setf json (append json (list (cons slot-name (to-json-object slot-val))))))
+             )))
+    (setf json (append (list :obj (cons "CLASS" (format nil "~A" (type-of instance))))
+                       json))
+    json))
+
+(defmethod to-json-object ((list list))
+  (mapcar #'to-json-object list))
+
+(defmethod to-json-object ((number number))
+  (jsown:to-json number))
+
+(defmethod to-json-object ((ratio ratio))
+  (jsown:to-json ratio))
+
+(defmethod to-json-object ((float float))
+  (jsown:to-json float))
+
+(defmethod to-json-object ((string string))
+  (jsown:to-json string))
+
+(defmethod to-json-object ((symbol symbol))
+  (symbol-name symbol))
+
+(defun export-as-json (object pathname)
+  (with-open-file (output pathname
+                          :direction :output
+                          :if-exists :supersede
+                          :if-does-not-exist :create)
+    (format output (jsown:to-json* (to-json-object object)))))
+
+(defun get-json-premises (json-object)
+  (let ((obj (rest json-object)))
+    (mapcar #'rest (rest (nth (position "premises" obj :test #'equals :key #'first) obj)))))
+
+(defun parse-premise-to-intension (json-premise)
+  (let* ((obj1 (read-from-string (rest (assoc "firstObject" json-premise :test 'equal))))
+         (rel  (convert-to-relation (rest (assoc "relation" json-premise :test 'equal))))
+         (obj2 (read-from-string (rest (assoc "secondObject" json-premise :test 'equal)))))
+    (parse (flatten `(,obj1 ,rel ,obj2)))))
+
+(defun parse-premises-to-intensions (json-premises)
+  (mapcar #'parse-premise-to-intension json-premises))
+
+(defun parse-observation-to-model (json-observation)
+(let* ((obj    (rest json-observation))
+       (things (rest (nth (position "observations" obj :test #'equals :key #'first) obj)))
+       (things (mapcar #'(lambda (x)
+                           (mapcar #'(lambda (y)
+                                       (cond
+                                        ((stringp y)
+                                         (list (read-from-string y)))
+                                        ((listp y)
+                                         (mapcar #'read-from-string y)))) x)) things))
+       (things (mapcar #'(lambda (x) (substitute nil '(-) x :test #'equals)) things))
+       (things (remove-if #'(lambda (x) (every #'null x)) things))
+       (things (transpose-list (reverse things)))
+       (things (remove-if #'(lambda (x) (every #'null x)) things)))
+  (make-instance 'sp-model :things things :fn nil :dims '((:X :LEFT-RIGHT) (:Y :BELOW-ABOVE)))))
+	
+(defun convert-to-relation (relation)
+  (cond
+   ((string= relation "leftOf")    '(is to the left of))
+   ((string= relation "rightOf")   '(is to the right of))
+   ((string= relation "behind")    '(is behind))
+   ((string= relation "inFrontOf") '(is in front of))
+   ((string= relation "above")     '(is above))
+   ((string= relation "below")     '(is below))))
+
+(defun test-proximal-1d-relations (model object1 object2)
+  (let* ((left    (parse `(,object1 is directly to the left of ,object2)))
+         (right   (parse `(,object1 is directly to the right of ,object2)))
+         (above   (parse `(,object1 is directly above ,object2)))
+         (below   (parse `(,object1 is directly below ,object2)))
+         (front   (parse `(,object1 is directly in front of ,object2)))
+         (behind  (parse `(,object1 is directly behind ,object2)))
+         conclusions-list)
+    (mapcar #'(lambda (x) (when (validate x (list model)) (push x conclusions-list)))
+            (list left right above below front behind))
+    conclusions-list))
+
+(defun test-1d-relations (model object1 object2)
+  (let* ((same    (parse `(,object1 is in the same place as ,object2)))
+         (left    (parse `(,object1 is to the left of ,object2)))
+         (right   (parse `(,object1 is to the right of ,object2)))
+         (above   (parse `(,object1 is above ,object2)))
+         (below   (parse `(,object1 is below ,object2)))
+         (front   (parse `(,object1 is in front of ,object2)))
+         (behind  (parse `(,object1 is behind ,object2)))
+         conclusions-list)
+    (mapcar #'(lambda (x) (when (validate x (list model)) (push x conclusions-list)))
+            (list same left right above below front behind))
+    conclusions-list))
+
+(defun find-all-relations (model)
+  (let* ((things       (flatten (things model)))
+         (combinations (combinations-with-replacement things 2))
+         (combinations (remove-if #'(lambda (x) (equals (first x) (second x))) combinations))
+         (relations    (mapcar #'(lambda (x) (funcall #'test-1d-relations model (first x) (second x))) combinations))
+         (relations    (flatten relations)))
+    relations))
+
+(defun filter-relations (relations)
+  (let ((same-relations (remove-if-not #'is-same relations)))
+    (dolist (same-rel same-relations)
+      (dolist (rel (mapcar #'copy-class-instance relations))
+        (when (equals (first-argument rel) (first-argument same-rel))
+          (let* ((rel2 (copy-class-instance rel)))
+            (setf (first-argument rel2) (second-argument same-rel))
+            (when (member rel2 relations :test #'equals)
+              (setf relations (remove-if #'(lambda (x) (equals x rel2)) relations))))))))
+  relations)
+
+(defmethod to-english ((intension sp-intension))
+  (case (relation intension)
+    (same   (format nil "~A is in the same place as ~A" (first-argument intension) (second-argument intension)))
+    (left   (format nil "~A is to the left of ~A"       (first-argument intension) (second-argument intension)))
+    (right  (format nil "~A is to the right of ~A"      (first-argument intension) (second-argument intension)))
+    (above  (format nil "~A is above ~A"                (first-argument intension) (second-argument intension)))
+    (below  (format nil "~A is below ~A"                (first-argument intension) (second-argument intension)))
+    (front  (format nil "~A is in front of ~A"          (first-argument intension) (second-argument intension)))
+    (behind (format nil "~A is behind ~A"               (first-argument intension) (second-argument intension)))
+    (otherwise (error "Can't identify relation."))))
+
+(defun process-task (json model output)
+  (let* ((type (if (footnote model) :premises :observations))
+         (obj  (rest json))
+         (task (position "task" obj :test #'equals :key #'first))
+         (task (when task (read-from-string (rest (nth task obj)))))
+         (args (position "arguments" obj :test #'equals :key #'first))
+         (args (when args (rest (nth args obj))))
+         description validation validation-output)
+    (case type
+      (:premises     nil)
+      (:observations (when (not task) (setf task 'describe))))
+    (case task
+      (describe
+       (format t "")
+       (setf description
+             (format nil "~{~#[None~;~a~;~a and ~a~:;~@{~a~#[~;, and ~:;,~%~]~}~]~:}"
+                     (mapcar #'(lambda (x) (to-english x)) (filter-relations (find-all-relations model)))))
+       (format t "Description~%-----------~%~A.~%~%" description)
+       (setf (description output) description))
+      (validate
+       (case type
+         (:premises     nil)
+         (:observations
+          (format t "~45@<Queried relation~>~15<Holds in model~>~%~
+                     ------------------------------------------------------------~%")
+          (dolist (relation args)
+            (handler-case
+                (setf validation-output (if (validate (parse relation) (list model)) "[YES]" " [NO]"))
+              (parser-error () (setf validation-output "[ERROR]")))
+            (format t "~45@<~A.~>~15<~A~>~%" relation validation-output)
+            (push (list relation validation-output) validation))
+          (format t "~%")
+          (setf (validation output) (reverse validation))))))
+    output))
+
+(defun process-premises-or-observations (json &key (print-model t))
+  (let ((output (make-instance 'json-output))
+        (model-string (make-array '(0) :element-type 'base-char
+                                  :fill-pointer 0 :adjustable t))
+        model)
+    (handler-case
+        (if (equals (first json) :obj)
+            (progn
+              (cond
+               ((some #'(lambda (x) (equals "premises" x)) (mapcar #'first (rest json)))
+                (parse-premises-to-intensions json)
+                (setf model (first (interpret (parse-premises-to-intensions (get-json-premises json))))))
+               ((some #'(lambda (x) (equals "observations" x)) (mapcar #'first (rest json)))
+                (setf model (parse-observation-to-model json))))
+              (when print-model (print-model model) (format t "~%"))
+              (setf (model output) model)
+              (with-output-to-string (s model-string)
+                (print-model model :output s))
+              (setf (model-string output) (split-sequence (format nil "~%") model-string))
+              (process-task json model output))
+          (progn
+            (format t "Error: improperly formatted JSON file.~%")
+            (setf (error-log output) "Improperly formatted JSON file.")))
+      (consistency-error ()
+        (format t "Inconsistent relations; unable to build model.~%")
+        (setf (error-log output) "Inconsistent relations; unable to build model.")))))
+
+(defun process-json-file (input-file output-file)
+  (let* ((input-json (jsown:parse (read-file-to-string input-file)))
+         (output-json (process-premises-or-observations input-json)))
+    (if (and output-file output-json)
+        (write-to-json (to-json-object output-json) output-file))))
+
+(defun process-input (&key (input-file nil) (output-file nil))
+  (initialize-tracer)
+  (let* ((input-file  (if input-file input-file (find-argument "--input")))
+         (output-file (if output-file output-file (find-argument "--output"))))
+    (if input-file
+        (process-json-file input-file output-file)
+      (progn
+        (print-cmras-header)
+        (mreasoner-repl)))))

@@ -29,6 +29,13 @@
   (push newelt (cdr (nthcdr index lst))) 
   lst)
 
+(defun all-positions (needle haystack)
+  (loop
+    for element in haystack 
+    and position from 0
+     when (equals element needle)
+      collect position))
+
 (defun all-permutations (lst &optional (remain lst))
   "Rtns list of all possible permutations of lst.
    Adapted from code posted by Orm Finnendahl on Stackoverflow.com."
@@ -53,8 +60,9 @@
   "rtns depth of embedding of lists, so can be used to
    distinguish between a single model as opposed to a modelset, e.g.,
    (depth '( ( ((A)(B)) )( ((B)(C)) ))) => 4, i.e., a modelset"
-  (cond((or (null lis-of-lis)(atom lis-of-lis)) 0)
-       ((listp lis-of-lis)(+ 1 (depth (car lis-of-lis))))))
+  (when (listp lis-of-lis) (setf lis-of-lis (remove-if #'null lis-of-lis)))
+  (cond((or (null lis-of-lis) (atom lis-of-lis)) 0)
+       ((listp lis-of-lis) (+ 1 (depth (first lis-of-lis))))))
 
 (defun replace-nth-from-list  (list n elem)
   ;"Given a list, replaces the nth element and returns the list.
@@ -63,6 +71,14 @@
   (cond
     ((null list) ())
     (t (append (subseq list 0 n) (list elem) (subseq list (+ 1 n)(length list))))))
+
+(defun transpose-list (list-of-lists)
+  "Transposes a two-dimensional list of lists, e.g.,
+   (transpose-list '((A B) (C D) (E F) (G H))) => ((A C E G) (B D F H))"
+  (let* ((new-list nil))
+    (dotimes (i (length (first list-of-lists)))
+      (push (mapcar #'(lambda (x) (nth i x)) list-of-lists) new-list))
+    (reverse new-list)))
 
 (defun split (string &optional max (ws '(#\Space #\Tab)))
   "Split `string' along whitespace as defined by the sequence `ws'.
@@ -87,7 +103,6 @@
   (if (null individuals) 
       nil
     (append (first individuals)(extract-all-individuals (rest individuals)))))
-
 
 (defun factorial (n)
   (if (< n 2)
@@ -117,6 +132,12 @@
        i)
     (declare (fixnum i)
 	     (float u p))))
+
+(defun read-file-to-string (file-path)
+  (with-open-file (file-stream file-path)
+    (let ((file-contents (make-string (file-length file-stream))))
+      (read-sequence file-contents file-stream)
+      file-contents)))
 
 ; ---------------------------------------------------------------------------------
 ; Section 2.2: Printing functions
@@ -196,16 +217,15 @@ first, print-indiv prints properties in order of template"
 (defun print-property (property &optional output)
   "prints a property, length 1 is affirmative, 2 is negative"
   (cond ((eq (first property) '-)
-         (print-spaces 2 output)
-         (format (or output t) "-~A" (cadr property)))  
+         (format (or output t) "~A¬~A" (print-spaces 2) (cadr property)))  
         (t 
-         (print-spaces 3 output)
-         (format (or output t) "~A" (first property)))))
+         (format (or output t) "~A~A" (print-spaces 3) (first property)))))
 
-(defun print-spaces-for-property(property &optional output)
-"print no of spaces = length of property in template + constant of 3
-to allow for space+negation. Itm is from template so always affirmative"
-(print-spaces (+ 3 (length (symbol-name (first property)))) output))    
+(defun print-spaces-for-property (property &optional output)
+  "print no of spaces = length of property in template + constant of 3
+   to allow for space+negation. Itm is from template so always affirmative"
+  (format (or output t) "~A"
+          (print-spaces (+ 3 (length (symbol-name (first property)))))))   
        
 #| (find-properties '(((a)) ((- b)) ((- a)(- c)) ((b)(d)))) => ((a)(b)(c)(d)) |#
 (defun find-properties (model)
@@ -239,11 +259,12 @@ to allow for space+negation. Itm is from template so always affirmative"
   (if (and (listp property)(eq '- (first property)))(negate-property property)
     property))
 
-(defun print-spaces (number &optional (output nil))
+(defun print-spaces (number)
   "prints number of spaces" 
-  (cond ((<= number 0) t)
-        (t  (format output " ")
-            (print-spaces (- number 1) output))))
+  (cond ((<= number 0) "")
+        (t  (concatenate 'string
+                         (format nil " ")
+                         (print-spaces (- number 1))))))
 
 #| (match-property '(b) '((a)(b)(c))) => t, (match '(- b) '((a)(- b)(c))) => t
 (match-property '((a)(b)) '( ((a)(b)) c)) => t |#
@@ -407,10 +428,14 @@ to allow for space+negation. Itm is from template so always affirmative"
       (dolist (event-marker marker)
         (let* ((event-track (nth (position (first event-marker) events) tracks)))
           (cond
-           ((equal (length event-marker) 1) (setf event-track (format nil "~A ~A" event-track (pad-label (first event-marker) (length buffer)))))
-           ((start-event-p event-marker)    (setf event-track (format nil "~A[~A" event-track (pad-label (first event-marker) (length buffer)))))
-           ((end-event-p event-marker)      (setf event-track (format nil "~A~A]" event-track buffer)))
-           (t                               (setf event-track (format nil "~A~A " event-track buffer))))
+           ((equal (length event-marker) 1)
+            (setf event-track (format nil "~A ~A" event-track (pad-label (first event-marker) (length buffer)))))
+           ((start-event-p event-marker)
+            (setf event-track (format nil "~A[~A" event-track (pad-label (first event-marker) (length buffer)))))
+           ((end-event-p event-marker)
+            (setf event-track (format nil "~A~A]" event-track buffer)))
+           (t
+            (setf event-track (format nil "~A~A " event-track buffer))))
           (setf (nth (position (first event-marker) events) tracks) event-track)))
       (dolist (event events)
         (when (not (member event (mapcar #'first marker) :test #'equal))
@@ -419,6 +444,35 @@ to allow for space+negation. Itm is from template so always affirmative"
     (pretty-print-t-model tracks :output output :separator separator)
     nil))
 
+; Printing for sp-models ---------------------------------------------------------
+
+(defun print-thing-or-place (thing)
+  (if (= 1 (length thing))
+      (symbol-name (first thing))
+    (format nil "~{~a~^+~}" (mapcar #'symbol-name thing))))
+
+(defmethod print-model ((model sp-model) &key (template nil) (output nil) (separator "~%"))
+  (case (length (dimensions model))
+    (1 (format (or output t) "~{~a~^  ~}" (mapcar #'print-thing-or-place (things model))))
+    (2 (print-2d-model model :template template :output output :separator separator))
+    (3 (error "print-model is not implemented for 3D models yet."))))
+
+(defmethod print-2d-model ((model sp-model) &key (template nil) (output nil) (separator "~%")) ;; 2d models only!
+  (let* ((things       (reverse (transpose-list (things model))))
+         (columns      (length (first things)))
+         (rows         (length things))
+         (print-width  15)
+         thing-string column-string)
+    (dotimes (i rows)
+      (setf column-string "")
+      (dotimes (j columns)
+        (setf thing-string (print-thing-or-place (nth j (nth i things))))
+        (if (equals thing-string "NIL")
+            (setf thing-string "")
+          (when (> (length thing-string) print-width) (setf thing-string (format nil "~A." (subseq thing-string 0 (1- print-width))))))
+        (setf column-string (format nil "~A~17@<~A~>" column-string thing-string)))
+      (format (or output t) (format nil "~A~A" column-string separator)))))
+
 ; Printing for s-models ----------------------------------------------------------
 
 (defmethod print-model ((model s-model) &key (template nil) (output nil) (separator "~%") (print-footnotes nil))
@@ -426,9 +480,9 @@ to allow for space+negation. Itm is from template so always affirmative"
   (let* ((possibilities (remove-duplicates (possibilities model) :test #'equals))
          (footnotes (mapcar #'footnote (possibilities model)))
          (template (make-print-template (mapcar #'possibilities possibilities))))
-    (format output "~%Model of: ~{~a~^, ~}~%" (mapcar #'abbreviate (footnote model)))
+    (format (or output t) "~%Model of: ~{~a~^, ~}~%" (mapcar #'abbreviate (footnote model)))
     (dotimes (i (length possibilities))
-      (format output separator)
+      (format (or output t) separator)
       (print-and-apply-template template
                                 (possibilities (nth i possibilities))
                                 (when print-footnotes (nth i footnotes))
@@ -443,8 +497,7 @@ to allow for space+negation. Itm is from template so always affirmative"
   "uses template to print items in model with appropriate separations"
   (let ((lead-in 4))
     (cond ((null model)
-       ;    (format output "~A" template)
-           (print-spaces (+ lead-in (reduce #'+ (mapcar #'(lambda (x) (+ 4 (length x))) (mapcar #'symbol-name (mapcar #'first template))))) output)
+           (format (or output t) "~A" (print-spaces (+ lead-in (reduce #'+ (mapcar #'(lambda (x) (+ 4 (length x))) (mapcar #'symbol-name (mapcar #'first template)))))))
            (print-footnote footnote output)
            nil)
           ((null template)
@@ -455,18 +508,19 @@ to allow for space+negation. Itm is from template so always affirmative"
            (print-and-apply-template (rest template) (rest model) footnote output))
           ((match (affirm (first template)) (affirm-indiv (find-properties (list model)))) ; first item in model != first in template
            (print-and-apply-template template (append-mods (rest model) (list(first model))) footnote output))
-          (t  (print-spaces (+ lead-in (length (symbol-name (caar template)))) output)
+          (t  (format (or output t) "~A" (print-spaces (+ lead-in (length (symbol-name (caar template))))))
               (print-and-apply-template (rest template) model footnote output)))))
 
 (defun print-footnote (footnote &optional (output nil))
-  (when footnote (format output "{ ~{~a~^, ~} }" (mapcar #'abbreviate footnote))))
+  (when footnote (format (or output t) "{ ~{~a~^, ~} }" (mapcar #'abbreviate footnote))))
 
 (defun print-possibility (item &optional (output nil))
   "prints single prop e.g. '(a1) '(- a1) or '(t121) which is a gentemp variable"
 (cond((null item) t)
      ((eq (first item) '-)
-           (print-spaces 2 output)(format output "¬ ~A" (second item)))
-     (t  (print-spaces 4 output)(format output "~A"  (first item)))))
+      (format (or output t) "~A¬ ~A" (print-spaces 2) (second item)))
+     (t
+      (format (or output t) "~A~A"  (print-spaces 4) (first item)))))
 
 (defun findatms (mods &optional lis)
   "rtns a list of each atom, once only, in the order that they occur in mods, treatingatm and its negation as same"
@@ -502,24 +556,6 @@ to allow for space+negation. Itm is from template so always affirmative"
               (t (append (list t) models2))))
      ((eq models2 t)(append models1 (list t)))
      (t (append models1 models2))))
-
-
-#| Calls:
-   find-properties
-      affirm
-         negate-property
-      match-property
-   print-indiv
-      affirm
-         negate-property
-      print-property
-         print-spaces
-      match-property
-      affirm-indiv
-         affirm
-      print-spaces-for-property
-         print-spaces
-|#
 
 ; ---------------------------------------------------------------------------------
 ; Section 2.3: CCL compatibility patches

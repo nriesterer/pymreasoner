@@ -8,8 +8,9 @@
 ; Section 3.2: Classes for conditions
 ; Section 3.3: Classes for intensions
 ; Section 3.4: Classes for models
+; Section 3.5: Class for tracer output
+; Section 3.6: Class for JSON output
 ; ---------------------------------------------------------------------------------
-
 
 ; ---------------------------------------------------------------------------------
 ; Section 3.1: General class copy functions
@@ -57,6 +58,12 @@
 ; Section 3.2: Classes for conditions
 ; ---------------------------------------------------------------------------------
 
+(define-condition parser-error (error)
+  ((text :initarg :text :reader text)))
+
+(define-condition consistency-error (error)
+  ((text :initarg :text :reader text)))
+
 (define-condition false-heuristic-conclusion-error (error)
   ((text :initarg :text :reader text)))
 
@@ -100,6 +107,15 @@
    (relation-to-utterance :accessor relation-to-utterance :initarg :ut))
   (:documentation "Intension for temporal assertions"))
 
+(defclass sp-intension (intension)
+  ((first-argument   :accessor subject           :initarg :subj)
+   (second-argument  :accessor object            :initarg :obj)
+   (relation         :accessor spatial-relation  :initarg :rel)
+   (dimension        :accessor spatial-dimension :initarg :dim)
+   (template         :accessor spatial-template  :initarg :temp)
+   (distance         :accessor spatial-distance  :initarg :dist))
+  (:documentation "Intension for spatial assertions"))
+
 (defclass s-intension (intension)
   ((first-argument  :accessor first-clause  :initarg :first-clause)
    (second-argument :accessor second-clause :initarg :second-clause)
@@ -137,8 +153,25 @@
   (:documentation "Temporal model in which all instances are moments, i.e., episodic markers of
                    past, present, future points in time along a linear timeline"))
 
+(defclass sp-model (model)
+  ((entities :accessor things :initarg :things)
+   (dimensions :accessor dimensions :initarg :dims))
+  (:documentation "Spatial model in which all instances are things (objects)."))
+
 (defclass null-model (model)
   ((conflict :accessor conflict :initarg :conf))
   (:documentation "Null model that is constructed when model building yields a conflict"))
 
 (defgeneric equals (entity-1 entity-2))
+
+; ---------------------------------------------------------------------------------
+; Section 3.6: Class for JSON output
+; ---------------------------------------------------------------------------------
+
+(defclass json-output ()
+  ((description   :accessor description   :initarg :desc  :initform nil)
+   (validation    :accessor validation    :initarg :val   :initform nil)
+   (model-string  :accessor model-string  :initarg :print :initform nil)
+   (model         :accessor model         :initarg :mod   :initform nil)
+   (error         :accessor error-log     :initarg :err   :initform nil))
+  (:documentation "Class for JSON output"))

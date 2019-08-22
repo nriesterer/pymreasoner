@@ -8,14 +8,10 @@
 ; Section 7.4: Starting a model, adding an object
 ; Section 7.5: Adding a subject
 ; Section 7.6: Validating an intension within a model
-; Section 7.7: Proactive interference
 
 ; ---------------------------------------------------------------------------------
 ; Section 7.1: Decide what to do with premise to build models
 ; ---------------------------------------------------------------------------------
-
-(define-condition consistency-error (error)
-  ((text :initarg :text :reader text)))
 
 (defun trace-build-model (intension &key (m nil) (s2 nil))
   (let ((system (if s2 "System 2" "System 1")))
@@ -31,7 +27,8 @@
    Add-object to existing model(s)
    Combine models
    Start new model"
-   (let* ((1st             (first-argument intension))
+   (let* ((m               (mapcar #'copy-class-instance m))
+          (1st             (first-argument intension))
           (2nd             (second-argument intension))
           (models-1st      (find-referent-in-modelset 1st m))
           (models-2nd      (find-referent-in-modelset 2nd m))
@@ -292,7 +289,7 @@
     (add-footnote model intension)
     model))
 
-(defun add-object-at-first-free-fit (intension obj model range)
+(defmethod add-object-at-first-free-fit ((intension t-intension) obj model range)
   "Adds an object in accordance with the 'first-free-fit' strategy (Ragni & Knauff, 2013).
    Event objects are inserted at the end of the array so as to avoid being inserted in
    between adjacent events. Hence, A before B, B after C yields C A B and not A C B."
@@ -307,7 +304,7 @@
     (setf (moments model) (insert-at `((,obj END)) (moments model) (1+ (second range))))
     (setf (moments model) (insert-at `((,obj START)) (moments model) (first range))))))
 
-(defun add-object-at-first-fit (intension obj model range)
+(defmethod add-object-at-first-fit ((intension t-intension) obj model range)
   "Adds an object in accordance with the 'first-fit' strategy (Ragni & Knauff, 2013).
    Event objects are inserted in between adjacent events. Hence, A before B, B after C
    yields A C B and not C A B."
@@ -348,7 +345,11 @@
    then it appends the item to the end of list at position index"
   (cond
     ((< index 0)                     (error "Index too small ~A" index))
-    ((and (= index 0) append)        (cons (append (copy-list (first list)) item) (rest list)))
+    ((and (= index 0)
+          (or (equals append :after)
+              (equals append t)))    (cons (append (copy-list (first list)) item) (rest list)))
+    ((and (= index 0)
+          (equals append :before))   (cons (append item (copy-list (first list))) (rest list)))
     ((and (= index 0) (not append))  (cons item list))
     ((endp list)                     (error "Index too big"))
     (t (cons (first list)            (insert-at item (rest list) (1- index) :append append)))))
@@ -361,51 +362,62 @@
 
 ; ----------------------- For sentential connectives -----------------------
 
+(defmethod start-model-stochastically ((intension s-intension) &key (attempt *build-attempts*))
+  (let* ((model (start-mod intension)))
+    (setf (capacity model) (generate-size))
+    model))
+
 (defmethod start-mod ((intension s-intension) &optional mod)
   ""
   (let* ((both        (when (is-initial (both intension))        (list (first-clause intension) (second-clause intension))))
          (first-only  (when (is-initial (first-only intension))  (list (first-clause intension))))
          (second-only (when (is-initial (second-only intension)) (list (second-clause intension))))
-         (neither     (when (is-initial (neither intension))     (list (negate (first-clause intension)) (negate (second-clause intension))))))
+         (neither     (when (is-initial (neither intension))     (list (negate (first-clause intension)) (negate (second-clause intension)))))
+         1st-or-2nd-only possibilities footnotes)
+
+    (when (system2-enabled?)
+      (setf
+       both        (when (is-possible (both intension))        (list (first-clause intension) (second-clause intension)))
+       first-only  (when (is-possible (first-only intension))  (list (first-clause intension) (negate (second-clause intension))))
+       second-only (when (is-possible (second-only intension)) (list (negate (first-clause intension)) (second-clause intension)))
+       neither     (when (is-possible (neither intension))     (list (negate (first-clause intension)) (negate (second-clause intension))))))
+
     (cond
      ((is-affirmative-atom intension)
       (make-instance 's-model :poss (list (list (first-clause intension))) :fn (list intension)))
      ((is-negative-atom intension)
       (make-instance 's-model :poss (list (list '- (first-clause intension))) :fn (list intension)))
      (t
-      (make-instance 's-model :poss (append (build-union first-only (negate (second-clause intension)))
-                                            (build-union second-only (negate (first-clause intension)))
-                                            (build-intersection both)
-                                            (build-intersection neither)) :fn (list intension))))))
-
-(defun build-intersection (intensions)
-  "Takes a list of intensions; if list is nil, return.
-   Else, start a new model based on the individual intensions, then
-   combine the model by taking the cartesian product of the models"
-  (if (null intensions) nil
-    (let* ((possibilities (mapcar #'(lambda (y) (start-mod y)) intensions))
-           (possibilities (combine-list-of-s-models possibilities)))
-      possibilities)))
+      (setf 1st-or-2nd-only
+            (if (system2-enabled?)
+                (append (build-intersection first-only) (build-intersection second-only))
+              (append (build-union first-only (negate (second-clause intension)))
+                      (build-union second-only (negate (first-clause intension))))))
+      (setf possibilities
+            (if (or (is-ori intension) (is-ore intension))
+                (append 1st-or-2nd-only (build-intersection neither) (build-intersection both))
+              (append (build-intersection both) 1st-or-2nd-only (build-intersection neither))))
+      (make-instance 's-model :poss possibilities :fn (list intension))))))
 
 (defun build-union (intensions footnote)
   "Takes a list of intensions; if list is nil, return.
    Else, start a new model based on the individual intensions, and
    keep the models separate from one another; unembed any embedded models"
-  (if (null intensions) nil
+  (cond
+   ((null intensions) nil)
+   ((or (not (stochastic-enabled?)) (and (stochastic-enabled?) (build-canonical?)))
     (let* ((possibilities (mapcar #'(lambda (y) (start-mod y)) intensions))
-           (possibilities (unembed-s-models possibilities))
-           (footnote      (cond
-                           ((is-atom footnote) (list footnote))
-                           ((is-and  footnote) (list (first-clause footnote)
-                                                     (list (second-clause footnote))))
-                           ((is-nor  footnote) (list (negate (first-clause footnote))
-                                                     (negate (second-clause footnote)))))))
+           (possibilities (unembed-s-models possibilities)))
       (dolist (m possibilities)
-        (when footnote (mapcar #'(lambda (x) (add-footnote m x)) footnote)))
-      possibilities)))
+        (when footnote (add-footnote m footnote)))
+      possibilities))
+   ((stochastic-enabled?)
+    (build-intersection (append intensions (list footnote))))
+   (t
+    (error "Error in BUILD-UNION."))))
 
 (defun unembed-s-models (m)
-  "Helper fn for build-intersection; for models that are 'embedded', i.e.,
+  "Helper fn for build-union; for models that are 'embedded', i.e.,
    models that contain additional s-models, unembed-s-models flattens
    the structure out by recursively working through each model and, if
    necessary, replacing the embedded s-model with the models that are
@@ -418,20 +430,34 @@
    (t (append (unembed-s-models (first m))
               (unembed-s-models (rest m))))))
 
+(defun build-intersection (intensions)
+  "Takes a list of intensions; if list is nil, return.
+   Else, start a new model based on the individual intensions, then
+   combine the model by taking the cartesian product of the models"
+  (if (null intensions) nil
+    (let* ((possibilities (mapcar #'(lambda (y) (start-mod y)) intensions))
+           (possibilities (combine-list-of-s-models possibilities)))
+      possibilities)))
+
 (defun combine-list-of-s-models (list)
-  "Helper fn for build-union; this fn applies the Cartesian product to its
+  "Helper fn for build-intersection; this fn applies the Cartesian product to its
    input models. If an atomic model is created, it returns that model; if
    an embedded model is created, where the Cartesian product yields multiple
    models, then a list of those individual models is returned"
   (let* ((model (make-instance 's-model
                               :poss (cartesian-product-of-models (mapcar #'possibilities list))
                               :fn (copy-instance-list (flatten (mapcar #'footnote list)))))
-         (models (if (= (depth (possibilities model)) 3)
-                     (mapcar #'(lambda (x) (make-instance 's-model :poss x :fn (copy-instance-list (flatten (mapcar #'footnote list)))))
-                             (possibilities model))
-                   (list model))))
+         models fn-list)
+    (if (= (depth (possibilities model)) 3) ; i.e., embedded model
+        (progn
+          (setf models (mapcar #'(lambda (x) (make-instance 's-model :poss x :fn nil)) (possibilities model)))
+          )
+      (setf models (list model)))
+
+    (dolist (m models)
+      (setf (footnote m) (flatten (mapcar #'footnote list))))
     models))
-    
+
 (defun cartesian-product-of-models (list)
   "This fn receives inputs in three formats. It detects the appropriate format, extracts the relevant
    possibilities, and applies the fn cartesian-product to the properly formatted possibilities. The
@@ -520,10 +546,10 @@
    a single item"
   (let ((atomlis nil))
     (cond((listp (car models)) (setf atomlis (findatms models nil))
-          (comp models (allpos atomlis)))
+          (comp models (all-possible atomlis)))
          (t (negate-property models)))))
 
-(defun allpos (model) ;pjl (taken from propositional.lisp)
+(defun all-possible (model) ;pjl (taken from propositional.lisp)
   "--------------------------------------------------------------------------------
    -- This function is originally written by Phil Johnson-Laird; it was taken    --
    -- from propositional.lisp, his implementation of the model theory circa 1995 --
@@ -534,8 +560,8 @@
    appending the two lists
    (allpos '((a)(b)(c)(d)))(allpos nil)(allpos '((a)))(allpos '((a)(- b)))"
   (cond((null (rest model))(list (list (first model))(list (negate-property (first model)))))
-       (t (append (mapcar #'(lambda(mod)(cons (first model) mod))(allpos (rest model)))
-                  (mapcar #'(lambda(mod)(cons (negate-property (first model)) mod))(allpos (rest model)))))))
+       (t (append (mapcar #'(lambda(mod)(cons (first model) mod))(all-possible (rest model)))
+                  (mapcar #'(lambda(mod)(cons (negate-property (first model)) mod))(all-possible (rest model)))))))
 
 (defun comp (models allposmodels) ;pjl (taken from propositional.lisp)
   "--------------------------------------------------------------------------------
@@ -559,6 +585,190 @@
        ((matchlists itm (first lis))(remove-itm itm (rest lis)))
        (t (cons (first lis) (remove-itm itm (rest lis))))))
 
+; ----------------------------- For causal connectives ----------------------------
+
+(defmethod start-mod ((intension c-intension) &optional mod)
+  ""
+  (let* ((both        (when (is-initial (both intension))        (list (first-clause intension)  (second-clause intension))))
+         (first-only  (when (is-initial (first-only intension))  (list (first-clause intension)  (negate (second-clause intension)))))
+         (second-only (when (is-initial (second-only intension)) (list (negate (first-clause intension)) (second-clause intension))))
+         (neither     (when (is-initial (neither intension))     (list (negate (first-clause intension)) (negate (second-clause intension))))))
+
+    (when (system2-enabled?)
+      (setf
+       both        (when (is-possible (both intension))        (list (first-clause intension) (second-clause intension)))
+       first-only  (when (is-possible (first-only intension))  (list (first-clause intension) (negate (second-clause intension))))
+       second-only (when (is-possible (second-only intension)) (list (negate (first-clause intension)) (second-clause intension)))
+       neither     (when (is-possible (neither intension))     (list (negate (first-clause intension)) (negate (second-clause intension))))))
+
+    (cond
+     ((is-affirmative-atom intension)
+      (make-instance 's-model :poss (list (list (first-clause intension))) :fn (list intension)))
+     ((is-negative-atom intension)
+      (make-instance 's-model :poss (list (list '- (first-clause intension))) :fn (list intension)))
+     (t
+      (setf possibilities
+            (if (is-prevent intension)
+                (append (build-intersection first-only) (build-intersection second-only) (build-intersection both) (build-intersection neither))
+              (append  (build-intersection both)(build-intersection first-only) (build-intersection second-only) (build-intersection neither))))
+      (make-instance 's-model :poss possibilities :fn (list intension))))))
+
+; ------------------------------ For spatial models ------------------------------
+
+(defmethod start-model-stochastically ((intension sp-intension) &key (attempt *build-attempts*))
+  (let* ((model (start-mod intension)))
+    (setf (capacity model) (generate-size))
+    model))
+
+(defmethod start-mod ((intension sp-intension) &optional mod)
+  "if no model, creates new model with just the subject; immediately sends intension to
+   add-object-thing with the object and the subject/"
+  (let* ((subj  (subject intension))
+         (obj   (object intension))
+         (model mod))
+    (when (null mod) (setf model (make-instance 'sp-model :things `((,subj)) :dims nil :fn nil)))
+    (add-object-thing intension obj model subj)
+    (add-footnote model intension)
+    model))
+
+(defmethod add-object-thing ((intension sp-intension) obj model subj)
+  "1. Sets the 'relation' of the intension as either :left-right, :below-above, :behind-front.
+   2. Sets whether the current model needs to be expanded ('expand'). 
+   3. Interprets the 'direction' of the relation, i.e., either :plus or :minus, relative to the
+      subject and object.
+   4. Adds the dimensionality to the model
+   5. Sets the 'axis' to see how the relation is represented in the model, i.e., :x, :y, or :z
+   6. Expands the 'direction' of the relation depending on whether the model represents 1, 2,
+      or 3 dimensions.
+   Once all this info is known, it is passed to insert-thing-at, where the object is the thing
+   to be inserted and the subject is the target of the insertion."
+  (let* ((dimension (spatial-dimension intension))
+         (expand (and (dimensions model) (not (member dimension (flatten (dimensions model))))))
+         (direction (if (or (is-right intension) (is-above intension) (is-front intension)) :minus :plus))
+         axis)
+    (add-dimensionality intension model)
+    (setf axis (first (first (member dimension (dimensions model) :test #'(lambda (x y) (member x y :test #'equals))))))
+    (setf direction (case (length (dimensions model))
+                      (1 direction)
+                      (2 (case axis (:x (list direction nil)) (:y (list nil direction))))
+                      (3 (case axis (:x (list direction nil nil)) (:y (list nil direction nil)) (:z (list nil nil direction))))))
+    (setf (things model) (insert-thing-at obj (things model) subj :direction direction :expand expand))))
+
+(defun insert-thing-at (thing list target &key (direction nil) (expand nil))
+  "Inserts a thing in a list of things at a target, relative to the number of dimensions
+   represented in the model."
+  (let* ((pos (thing-position target list)))
+    (cond 
+     ((numberp pos)
+      (insert-1d-thing-at thing list target :direction direction :expand expand))
+     ((= 2 (length pos))
+      (insert-2d-thing-at thing list target :direction direction :expand expand))
+     ((= 3 (length pos))
+      (insert-3d-thing-at thing list target :direction direction :expand expand))
+     (t (error "Cannot handle reasoning in > 3 dimensions.")))))
+
+(defun insert-1d-thing-at (thing list target &key (direction nil) (expand nil))
+  "Inserts item into list (of lists) at the target at the specified 'direction' (required).
+   If 'expand' is t, then the model needs to be expanded to a 2nd dimension to accommodate thing.
+   If direction is :plus, adds item to the end of the list; if direction is :minus, adds it to
+   the front of the list.
+   Adopts a first-free-fit strategy of insertion (see Ragni & Knauff, 2013)."
+  (when (not direction) (error "No direction specified."))
+  (if (or (not (stochastic-enabled?)) (build-canonical?))
+      (cond ; implements first-free-fit strategy
+       (expand                          (insert-and-2d-expand thing list target :direction direction))
+       ((null list)                     nil)
+       ((and (symbolp thing)
+             (equals direction :plus))  (attempt-merge thing (append list (list (list thing))) :direction direction))
+       ((and (symbolp thing)
+             (equals direction :minus)) (attempt-merge thing (append (list (list thing)) list) :direction direction))
+       ((and (listp thing)
+             (equals direction :plus))  (attempt-merge thing (append list (list thing)) :direction direction))
+       ((and (listp thing)
+             (equals direction :minus)) (attempt-merge thing (append (list thing) list) :direction direction)))
+    (error "Need to implement fit strategy (see Ragni & Knauff, 2013).")))
+
+(defun attempt-merge (thing things &key (direction nil))
+  "By default, the fn insert-1d-thing at simply tacks the 'thing' onto the right or the
+   left of the set of things. This fn attempts to merge the two rightmost things or the
+   two leftmost things."
+  (cond
+   ((= (depth thing) 0) things)
+   ((= (depth thing) 1) (error "Improperly formed spatial model."))
+   ((= (depth thing) 2)
+    (let ((pos (first (thing-position (first (find-if-not #'null thing)) things))))
+      (cond
+       ((equals direction :plus)
+        (append (first (split-sequence nil things :start 0 :end (- (length things) 2)))
+                (merge-two-lists (nth (1- pos) things) (nth pos things))
+                (when (> (1- (length things)) pos)
+                  (first (split-sequence nil things :start (1+ pos) :end (1- (length things)))))))
+       ((equals direction :minus)
+        (append (merge-two-lists (nth 0 things) (nth 1 things))
+                (first (split-sequence nil things :start 2 :end (length things))))))))))
+
+(defun merge-two-lists (list1 list2)
+  (let* ((merged-lists (mapcar #'(lambda (x y) (find-if-not #'null (list x y))) list1 list2))
+         (all-items (remove-if #'null (append list1 list2))))
+    (if (equal (length (remove-if #'null merged-lists)) (length all-items))
+        (list merged-lists)
+      (list list1 list2))))
+
+(defun insert-and-2d-expand (thing list target &key (direction nil))
+  "OK 2018-10-03 ssk
+   Inserts item into list (of lists) at the target at the specified 'direction' (required).
+   Does so in a manner congruent with insert-1d-thing-at, but replaces every atomic object with a list,
+   and adds the 'thing' either in the front or in the back of the target (or NIL, otherwise)."
+  (cond
+   ((not direction) (error "No direction specified."))
+   ((listp direction) (setf direction (find-if-not #'null direction))))
+  (cond
+   ((null list)                       nil)
+   ((and (member target (first list)) (equals direction :plus))
+    (cons (list (first list) (list thing)) (insert-and-2d-expand thing (rest list) target :direction direction)))
+   ((and (member target (first list)) (equals direction :minus))
+    (cons (list (list thing) (first list)) (insert-and-2d-expand thing (rest list) target :direction direction)))
+   (t
+    (cons (if (equals direction :plus) (list (first list) nil) (list nil (first list)))
+          (insert-and-2d-expand thing (rest list) target :direction direction)))))
+
+(defun insert-2d-thing-at (thing list target &key (direction nil) (expand nil))
+  "OK 2018-10-03 ssk -- (NB: eventually this fn needs to control 3D expansion)
+  This fn inserts a thing into a 2D model by relying on a 1D insertion.
+  It first creates a template of what to insert (called the 'thing-column') by grabbing
+  the column that the target is in, clearing out any elements in the column that aren't
+  the target, then substituting the thing for the target. Then it simply shoves the
+  thing-column into the 2D model at the position of the target-column, using the fn
+  insert-1d-thing-at.
+  Note: 1D insertions are trivial in the x-direction -- simply append the new object
+  at the target. They're trickier in the y-direction, but this is solved by
+  simply transposing the 2D model, appling a 1D insertion, and then transposing again.
+  That's what the x-shift and y-shift tests are doing below."
+  (let* ((x-shift (first direction))
+         (y-shift (second direction))
+         (list    (if y-shift (transpose-list list) list)))
+    (let* ((position      (position target (mapcar #'flatten list)
+                                    :test #'(lambda (x y) (member x (flatten y) :test #'equals))))
+           (target-column (nth position list))
+           (predicate     #'(lambda (x) (member target (flatten x))))
+           (thing-column  (substitute-if-not nil predicate target-column))
+           (thing-column  (substitute-if (list thing) predicate thing-column)))
+      (if x-shift 
+          (insert-1d-thing-at thing-column list target-column :direction x-shift)
+        (transpose-list (insert-1d-thing-at thing-column list target-column :direction y-shift))))))
+
+(defmethod add-dimensionality ((intension sp-intension) (model sp-model))
+  "This fn sets the 'dimensions' slot of the model. The slot keeps track of the dimensions
+   that are currently represented in the model, and the particular axis where it's represented.
+   Suppose, e.g., that the premises are: A is to the left of B / B is above C. In this case,
+   the dimensions would be: (dimensions model) => ((:X :LEFT-RIGHT) (:Y :BELOW-ABOVE)).
+   Alternatively, if the premises are: A is above B / B is to the left of C; then the
+   dimensions would be: (dimensions model) => ((:X :BELOW-ABOVE) (:Y :LEFT-RIGHT))."
+  (let* ((axis (case (length (dimensions model)) (0 ':x) (1 ':y) (2 ':z) (otherwise nil)))
+         (dimension (spatial-dimension intension)))
+    (unless (or (null axis) (member dimension (flatten (dimensions model))))
+      (setf (dimensions model) (append (dimensions model) (list (list axis dimension)))))))
+
 ; ---------------------------------------------------------------------------------
 ; Section 7.5: Adding a subject
 ; ---------------------------------------------------------------------------------
@@ -581,9 +791,10 @@
        A
   -B       C
            C"
-  (let ((models (mapcar #'(lambda (m) (n-add-subject intension m)) models)))
-    (trc "System 1" (format nil "Added subject of ~A to model" (abbreviate intension)) :m models)
-    models))
+  (mapcar #'(lambda (m) (n-add-subject intension m)) models)
+  (mapcar #'(lambda (m) (add-footnote m intension)) models)
+  (trc "System 1" (format nil "Added subject of ~A to model" (abbreviate intension)) :m models)
+  models)
 
 (defmethod n-add-subject ((intension q-intension) (model q-model))
   (let* ((subject (subject intension))
@@ -611,12 +822,12 @@
                     (make-complex-individuals 1 (list subject (negate object)))
                     (list (list subject))))
            (t (error "Unrecognized intension."))))
-    (add-footnote model intension)
     model))
 
 (defmethod add-first-argument ((intension t-intension) models)
   "Add subject (event) to model in which object is present"
-  (setf models (mapcar #'(lambda (m) (add-subject-event intension m)) models))
+  (mapcar #'(lambda (m) (add-subject-event intension m)) models)
+  (mapcar #'(lambda (m) (add-footnote m intension)) models)
   (trc "System 1" (format nil "Added subject of ~A to model" (abbreviate intension)) :m models)
   models)
 
@@ -636,10 +847,9 @@
         (add-subject-at-first-fit intension subj model obj-range)
       (add-subject-at-first-free-fit intension subj model obj-range))
 
-    (add-footnote model intension)
     model))
 
-(defun add-subject-at-first-free-fit (intension subj model range)
+(defmethod add-subject-at-first-free-fit ((intension t-intension) subj model range)
   "Nearly identical to add-object-at-first-free-fit:
    Adds an subject in accordance with the 'first-free-fit' strategy (Ragni & Knauff, 2013).
    Event objects are inserted at the end of the array so as to avoid being inserted in
@@ -655,7 +865,7 @@
     (setf (moments model) (insert-at `((,subj END)) (moments model) (1+ (second range))))
     (setf (moments model) (insert-at `((,subj START)) (moments model) (first range))))))
 
-(defun add-subject-at-first-fit (intension subj model range)
+(defmethod add-subject-at-first-fit ((intension t-intension) subj model range)
   "Nearly identical to add-object-at-first-fit:
    Adds a subject in accordance with the 'first-fit' strategy (Ragni & Knauff, 2013).
    Event objects are inserted in between adjacent events. Hence, A before B, C before B
@@ -670,6 +880,36 @@
    ((is-during intension)
     (setf (moments model) (insert-at `((,subj END)) (moments model) (1+ (second range))))
     (setf (moments model) (insert-at `((,subj START)) (moments model) (first range))))))
+
+(defmethod add-first-argument ((intension sp-intension) models)
+  "Add subject (thing) to model in which object is present"
+  (mapcar #'(lambda (m) (add-subject-thing intension (subject intension) m (object intension))) models)
+  (mapcar #'(lambda (m) (add-footnote m intension)) models)
+  (trc "System 1" (format nil "Added subject of ~A to model" (abbreviate intension)) :m models)
+  models)
+
+(defmethod add-subject-thing ((intension sp-intension) thing model obj)
+  "1. Sets the 'relation' of the intension as either :left-right, :below-above, :behind-front.
+   2. Sets whether the current model needs to be expanded ('expand'). 
+   3. Interprets the 'direction' of the relation, i.e., either :minus or :plus, relative to the
+      subject and object. (NB: this is the opposite from add-object-thing above).
+   4. Sets the 'axis' to see how the relation is represented in the model, i.e., :x, :y, or :z
+   5. Expands the 'direction' of the relation depending on whether the model represents 1, 2,
+      or 3 dimensions.
+   Once all this info is known, it is passed to insert-thing-at, where the subject is the thing
+   to be inserted and the object is the target of the insertion."
+  (let* ((relation (cond ((or (is-left intension)   (is-right intension)) :left-right)
+                         ((or (is-below intension)  (is-above intension)) :below-above)
+                         ((or (is-behind intension) (is-front intension) ) :behind-front)))
+         (expand (not (member relation (flatten (dimensions model)))))
+         (direction (if (or (is-right intension) (is-above intension) (is-front intension)) :plus :minus))
+         (axis (first (first (member relation (dimensions model) :test #'(lambda (x y) (member x y :test #'equals)))))))
+    (setf direction (case (length (dimensions model))
+                      (1 direction)
+                      (2 (case axis (:x (list direction nil)) (:y (list nil direction))))
+                      (3 (case axis (:x (list direction nil nil)) (:y (list nil direction nil)) (:z (list nil nil direction))))))
+    (setf (things model) (insert-thing-at thing (things model) obj :direction direction :expand expand))
+    (add-dimensionality intension model)))
 
 ; ---------------------------------------------------------------------------------
 ; Section 7.6: Validate an intension within a model
@@ -711,40 +951,47 @@
                    (if result "holds" "does not hold"))))
     result))
 
-(defmethod validate-possibilities ((intension s-intension) modelset)
+(defmethod validate-possibilities ((intension s-intension) embedded-model)
   "This fn validates atomic and simple-compound s-intensions against a
    set-theoretic semantics for sentential reasoning."
   (let* ((1st             (if (is-atom intension) (first-clause intension) (first-clause (first-clause intension))))
          (2nd             (if (is-atom intension) (second-clause intension) (first-clause (second-clause intension))))
-         (models-1st      (find-referent-in-model 1st modelset))
-         (models-2nd      (find-referent-in-model 2nd modelset))
+         (models-1st      (find-referent-in-model 1st embedded-model))
+         (models-2nd      (find-referent-in-model 2nd embedded-model))
          (models-both     (find-referent-in-modelset (list 2nd) models-1st))
          (models-1st-only (remove-models models-2nd models-1st))
          (models-2nd-only (remove-models models-1st models-2nd))
+         (models-neither  (remove-models (append models-1st-only models-2nd-only models-both) (mapcar #'possibilities (possibilities embedded-model))))
          (validate        (cond
                            ((is-affirmative-atom intension)
-                            (= (length models-1st) (length (possibilities modelset))))
+                            (= (length models-1st) (length (possibilities embedded-model))))
                            ((is-negative-atom intension)
                             (not models-1st))
                            ((is-and intension)
                             (and models-both (not models-1st-only) (not models-2nd-only)))
+                           ((is-nor intension)
+                            (and models-neither (not models-both) (not models-1st-only) (not models-2nd-only)))
                            ((is-ori intension)
                             (or models-1st models-2nd))
                            ((is-ore intension)
-                            (or models-1st-only models-2nd-only))
+                            (and (or models-1st-only models-2nd-only) (not (or models-both models-neither))))
                            ((is-if intension)
                             (not models-1st-only))
                            ((is-iff intension)
-                            (and (not models-1st-only) (not models-2nd-only)))
+                            (and (or models-both models-neither) (not models-1st-only) (not models-2nd-only)))
+                           ((is-not intension)
+                            (and (not models-both) (not models-1st-only) (not models-2nd-only)))
                            (t (error "Can't validate connective")))))
-    #|(format t "     ~%1st clause: ~A~
+#|    (format t "     ~%1st clause: ~A~
                     ~%2nd clause: ~A~
                     ~%     Model: ~A~
                     ~%Models-1st: ~A~
                     ~%Models-2nd: ~A~
+                   ~%Models-both: ~A~
                ~%Models-1st only: ~A~
                ~%Models-2nd only: ~A~
-                      ~%Validate: ~A~%" 1st 2nd modelset models-1st models-2nd models-1st-only models-2nd-only validate)|#
+                ~%Models-neither: ~A~
+                      ~%Validate: ~A~%" 1st 2nd embedded-model models-1st models-2nd models-both models-1st-only models-2nd-only models-neither validate) |#
     validate))
 
 (defmethod validate-model ((intension s-intension) model &key (validate-true t))
@@ -758,12 +1005,12 @@
     (if (or (is-atom intension) (is-simple-compound intension))
         (setf validate (validate-possibilities intension model))
       (let* ((clause1-validated (validate-model (first-clause intension) model))
-             (clause2-validated (validate-model (second-clause intension) model))
+             (clause2-validated (when (not (is-not intension)) (validate-model (second-clause intension) model)))
              validate-possible-list validate-impossible-list)
     
-        (format t "Input intension: ~A~%~%" (abbreviate intension))
-        (inspect-model model)
-        (format t "~%Clause 1 validated: ~A Clause 2 validated: ~A~%" clause1-validated clause2-validated) 
+;        (format t "Input intension: ~A~%~%" (abbreviate intension))
+;        (inspect-model model)
+;        (format t "~%Clause 1 validated: ~A Clause 2 validated: ~A~%" clause1-validated clause2-validated) 
         
         (setf validate-possible-list
               (list
@@ -779,20 +1026,10 @@
                (if (is-impossible (neither intension))     (not (and (not clause1-validated) (not clause2-validated))) t)))
 
         (setf validate
-              (cond
-               ((or (is-atom intension) (is-and intension))
-                (notany #'null (append validate-possible-list validate-impossible-list)))
-               ((is-ori intension)
-                (and (notevery #'null validate-possible-list)
-                     (notany #'null validate-impossible-list)))
-               ((is-ore intension)
-                (and (notevery #'null (list (second validate-possible-list)
-                                            (third validate-possible-list)))
-                     (notany #'null (append (list (first validate-possible-list)
-                                                  (second validate-possible-list)
-                                                  validate-impossible-list)))))
-               (t (error "Can't validate connective"))))))
-        (if validate-true validate (not validate))))
+              (and (notevery #'null validate-possible-list)
+                   (notany #'null validate-impossible-list)))))
+
+    (if validate-true validate (not validate))))
 
 (defmethod validate-model ((intension q-intension) (model q-model) &key (validate-true t)) ; ssk
   "Validate for q-intensions gets a model, and checks that an intension holds for that model.
@@ -834,6 +1071,65 @@
                     (>= (second posX) (second posY)))))))
     (if validate-true test (not test))))
 
+(defmethod validate-model ((intension sp-intension) (model sp-model) &key (validate-true t))
+  "Validate for sp-intensions gets a model, and checks that an intension holds for that model.
+   Validate checks whether subj and obj are related in models-subj-obj as specified in the
+   sp-intension."
+  (let* ((thing1    (first-argument intension))
+         (thing2    (second-argument intension))
+         (template  (spatial-template intension))  ; for "between" relations
+         (pos1      (when (not template) (thing-position thing1 (things model))))
+         (pos2      (when (not template) (thing-position thing2 (things model))))
+         (relation  (spatial-relation intension))
+         (dimension (spatial-dimension intension))
+         (distance  (spatial-distance intension))
+         (distance  (if (equals distance :infinity) 9999999999 distance))
+         test)
+    (cond
+     (template
+      (setf test (validate-spatial-template-between intension model)))
+     ((is-same intension)      (setf test (equals pos1 pos2)))
+     ((is-different intension) (setf test (not (equals pos1 pos2))))
+     ((or (null pos1) (null pos2) (null (position dimension (dimensions model) :key #'second)))
+      (setf test nil))
+     (t
+      (progn
+;        (format t "pos1: ~A~%pos2: ~A~%distance: ~A~%" pos1 pos2 distance)
+        (when (> (depth pos1) 0)
+          (setf pos1 (nth (position dimension (dimensions model) :key #'second) pos1))
+          (setf pos2 (nth (position dimension (dimensions model) :key #'second) pos2)))
+
+        (setf test
+              (cond
+               ((equals relation '-) (and (< pos1 pos2) (< (abs (- pos1 pos2)) distance)))
+               ((equals relation '+) (and (> pos1 pos2) (< (abs (- pos1 pos2)) distance))))))))
+
+    (if validate-true test (not test))))
+
+(defmethod validate-spatial-template-between (intension model)
+  ""
+  (let* ((referents       (flatten (list (first-argument intension) (second-argument intension))))
+         (positions       (mapcar #'(lambda (x) (thing-position x (things model))) referents))
+         (reduced-model-x (mapcar #'(lambda (y) (mapcar #'(lambda (x) (intersection referents x)) y)) (things model)))
+         (reduced-model-x (remove-if #'null (mapcar #'(lambda (y) (remove-if #'null y)) reduced-model-x)))
+         (reduced-model-y (mapcar #'(lambda (y) (mapcar #'(lambda (x) (intersection referents x)) y)) (transpose-list (things model))))
+         (reduced-model-y (remove-if #'null (mapcar #'(lambda (y) (remove-if #'null y)) reduced-model-y)))
+         (distance        (spatial-distance intension))
+         (distance        (if (equals distance :infinity) 9999999999 distance))
+         test)
+
+    (setf test (or (member reduced-model-x
+                           (mapcar #'(lambda (y) (mapcar #'(lambda (x) (list (list x))) y)) (spatial-template intension))  ;; :x axis
+                           :test #'equals)
+                   (member reduced-model-y
+                           (mapcar #'(lambda (y) (mapcar #'(lambda (x) (list (list x))) y)) (spatial-template intension))  ;; :x axis
+                           :test #'equals)))
+    (when (and (is-between intension) (= distance 1))
+      (setf test (and test
+                      (or (= 1 (length (remove-duplicates (mapcar #'first positions))))
+                          (= 1 (length (remove-duplicates (mapcar #'second positions))))))))
+    test))
+
 (defun validate-cardinality (intension model) ; ssk
   "Validates that the referent cardinality of a given model with respect to subj
    holds as specified in the given intension. For example, suppose intension is:
@@ -868,38 +1164,3 @@
                                   (get-subj-wo-obj-cardinality subj obj model)
                                 (get-subj&obj-cardinality subj obj model))))
     (evaluate-boundary-conditions subj&obj-cardinality cardinality conditions)))
-
-(defun check-validate-syl () ; ssk
-  "check-validate-syl takes the list of intensions (global param defined above), and builds a
-   model for each intension in the list. It then proceeds to validate every intension in
-   the list against the model it created. It does this for every model built from the
-   intensions in the list."
-  (format t "-------------------------------")
-  (let ((intensions (list Aab Iab Oab Eab Aba Iba Oba Eba)))
-    (dolist (intsn intensions)
-      (let* ((model (first (funcall #'start-model intsn)))
-             (validate-output (mapcar #'(lambda (x) (validate-model x model)) intensions)))
-        (format t "~%Given the following model: ~%~%")
-        (print-model model)
-        (format t "~%~%validate returns the following~%~
-   for the 9 example intsns: ~%~%~
-   ~28<All A are B:~; ~A~>~%~
-   ~28<Some A are B:~; ~A~>~%~
-   ~28<No A are B:~; ~A~>~%~
-   ~28<Some A are not B:~; ~A~>~%~
-   ~28<Most A are B:~; ~A~>~%~
-   ~28<At least 3 A are B:~; ~A~>~%~
-   ~28<At most 3 A are B:~; ~A~>~%~
-   ~28<At least 1/2 A are B:~; ~A~>~%~
-   ~28<At most 1/3 A are B:~; ~A~>~%~
-   -------------------------------"
-                (nth 0 validate-output)
-                (nth 1 validate-output)
-                (nth 2 validate-output)
-                (nth 3 validate-output)
-                (nth 4 validate-output)
-                (nth 5 validate-output)
-                (nth 6 validate-output)
-                (nth 7 validate-output)
-                (nth 8 validate-output)
-                (nth 9 validate-output))))))

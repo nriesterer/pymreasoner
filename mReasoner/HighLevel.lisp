@@ -22,7 +22,7 @@
       (if models (setf models (build-model intension :m models))
         (setf models (build-model intension))))
     (setf (initial-model *tracer*) (first models))
-    (trace-model (first models))
+    ;(trace-model (first models))
     models))
 
 ; ---------------------------------------------------------------------------------

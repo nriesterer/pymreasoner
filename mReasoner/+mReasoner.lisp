@@ -2,7 +2,7 @@
 ; mReasoner is a unified computational implementation of the mental model theory of
 ; thinking and reasoning.
 ; ---------------------------------------------------------------------------------
-; Copyright (C) 2017 Mental Models and Reasoning Lab
+; Copyright (C) 2018 Mental Models and Reasoning Lab
 ;
 ; Website: http://mentalmodels.princeton.edu
 ; Contact: Sangeet Khemlani (skhemlani@gmail.com)
@@ -34,20 +34,23 @@
 ; ---------------------------------------------------------------------------------
 
 ; Long-term plan of development:
-; --------------------------------------------------------------------------------
-; Version Syntactic capability         Tasks
-; ------- ---------------------------- -------------------------------------------
-;     1.0 Conns and quants             Inference, possibility, consistency, GUI
-;     1.5 Temporal/causal models       Probability, modulation
+; ---------------------------------------------------------------------------------
+; Version Expressivity                 Inferential tasks
+; ------- ---------------------------- --------------------------------------------
+;     1.0 Connectives and quantifiers  Inference, possibility, consistency, GUI
+;     1.5 Temporality and causality    Probability, modulation
 ;     2.0 Spatial relations            Command-line interoperability
-;     2.5 Deontics, epistemics         Explanations
-; --------------------------------------------------------------------------------
+;     2.5 Deontic and epistemic verbs  Explanations
+; ---------------------------------------------------------------------------------
+
+(format t "~A[~A]~A~%"
+        (make-string 40 :initial-element #\-)
+        (format nil "~30:@<~A~>" "Loading mReasoner...")
+        (make-string 40 :initial-element #\-))
 
 ; ---------------------------------------------------------------------------------
 ; Loading code
 ; ---------------------------------------------------------------------------------
-
-(format t "------------------------------------- Begin loading mReasoner ------------------------------------~%")
 
 (defparameter *system-name* "mReasoner")
 (defparameter *version*     "0.9")
@@ -75,7 +78,7 @@
                   (setf revision-number (parse-integer revision-number :junk-allowed t))
                   (setf *version* (format nil "~A.r~A" *version* revision-number))))
 
-              (setf system:*stack-overflow-behaviour* :warn) ; Suppress stack overflow warnings SSK 2015-02-05
+              (setf system:*stack-overflow-behaviour* nil) ; Suppress stack overflow warnings SSK 2015-02-05
 
               (defsystem "mReasoner"
                               ()
@@ -90,7 +93,6 @@
                                         "Counterexamples.lisp"
                                         "Diagnostics.lisp"
                                         "jpd-belief-icon.lisp" ;; FIX !!! SSK 4/19/12
-                                        "Control.lisp"
                                         "UserInterface.lisp"
                                )
                      :rules  ((:in-order-to :compile :all
@@ -110,20 +112,18 @@
   (load (file-path "FormConclusions.lisp"))
   (load (file-path "Counterexamples.lisp"))
   (load (file-path "Diagnostics.lisp"))
-  (load (file-path "jpd-belief-icon.lisp"))
-  (load (file-path "Control.lisp"))
-)
+  (load (file-path "jpd-belief-icon.lisp")))
 
 ; ---------------------------------------------------------------------------------
-; Global variables
+; Global variables and related functions
 ; ---------------------------------------------------------------------------------
 
 (defparameter *mR-interface* nil
   "Global variable used to access GUI interface")
 
 (defparameter *exhaustive-search-depth* 7
- "Global variable that controls the combinatoric depth of the exhaustic search
-  algorithms defined in Counterexamples.lisp")
+  "Global variable that controls the combinatoric depth of the exhaustic search
+   algorithms defined in Counterexamples.lisp")
 
 (defparameter *stochastic* nil
   "Parameter that enables or disables stochastic system.")
@@ -131,6 +131,9 @@
 (defparameter *build-attempts* 1000
   "Parameter that establishes the number of attempts to build a stochastic model
    before the system stops trying.")
+
+(defparameter *synthetic-data* nil
+  "Parameter that holds synthetic data from multiple inferences.")
 
 (defparameter +sigma+ 0.0
   "Parameter that control the execution of system 2 processes (i.e., sigma = search)
@@ -157,8 +160,6 @@
    counterexample or whether they simply report 'NVC' once a counterexample is found. When
    omega = 1.0, weakening always occurs; when omega = 0.0, individuals always report 'NVC' when
    a counterexample is found. When omega = 0.6, there's a 60% chance that weakening will occur.")
-
-(defparameter *synthetic-data* nil)
 
 ;(defparameter *mailbox* (process-data *standard-output*))
 
@@ -191,5 +192,7 @@
 (defun weaken-conclusions? ()
   (< (random 1.0) +omega+))
 
-(format t "------------------------------------ Loaded mReasoner ~A -----------------------------------~%~%"
-        *version*)
+(format t "~A[~A]~A~%"
+        (make-string 40 :initial-element #\-)
+        (format nil "~30:@<~A ~A~>" "Loaded mReasoner" *version*)
+        (make-string 40 :initial-element #\-))

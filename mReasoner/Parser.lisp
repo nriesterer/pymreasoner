@@ -20,12 +20,7 @@ Section 4.6: Built-in intensions
 ; ---------------------------------------------------------------------------------
 
 (defparameter *grammar*
-  '(; Interrogatives ----------------------------------------------------------
-    (Int           -> (Quest-What S-Cop Def-Art Prob Det-That
-                                  S Adj-Given S Qmark)    sem-i-cprob)
-    (Int           -> (Quest-What S-Cop Def-Art Prob
-                                  Det-That S Qmark)       sem-i-prob)
-    ; Atomic sentences and connectives  ---------------------------------------
+  '(; Atomic sentences and connectives  ---------------------------------------
     (S             -> (Var)                               sem-aff-var)
     (S             -> (Neg Var)                           sem-neg-var)
     (S             -> (Punct S Conn S)                    sem-cscs)
@@ -43,65 +38,98 @@ Section 4.6: Built-in intensions
     (S             -> (Name S-Cop Neg Indef-Art Noun)     sem-set-nonmember)
     (S             -> (Name S-Cop Adj)                    sem-set-member-adj)
     (S             -> (Name S-Cop Neg Adj)                sem-set-nonmember-adj)
+    (Pred-VP       -> (P-Cop Nouns)                       sem-affirmative-pred)
+    (Pred-VP       -> (P-Cop Predet-Both
+                             Nouns Conn Nouns)            sem-affirmative-pred-conn)
+    (Pred-VP       -> (P-Cop Predet-Either
+                             Nouns Conn Nouns)            sem-affirmative-pred-conn)
+    (Pred-VP       -> (P-Cop Neg Nouns)                   sem-negative-pred)
     ; Temporal sentences  -----------------------------------------------------
-    (S             -> (Var Temp-VP)                       sem-temporal)
-    (S             -> (Var Temp-PP)                       sem-temporal)
+    (S             -> (Var Temporal-VP)                   sem-temporal)
+    (S             -> (Var Temporal-PP)                   sem-temporal)
+    (Temporal-VP   -> (Temp-Cop Temp-Rel Var)             sem-temporal-relation)
+    (Temporal-PP   -> (Temp-Cop Temp-Prep Var)            sem-temporal-preposition)
+    (Temporal-PP   -> (Temp-Verb Temp-Prep Var)           sem-temporal-preposition)
+    (Temporal-PP   -> (Temp-Verb Temp-Rel Var)            sem-temporal-preposition)
+    ; Spatial sentences and relations  ----------------------------------------
+    (S             -> (Var Spatial-VP)                    sem-spatial)
+    (Spatial-VP    -> (S-Cop Spatial-PP)                  sem-spatial-vp)
+    (Spatial-VP    -> (S-Cop Adv-Directly Spatial-PP)     sem-spatial-adv-vp)
+    (Spatial-PP    -> (To-Prep Def-Art Spat-Horiz-Rel
+                               Of-Prep Var)               sem-spatial-horizontal)
+    (Spatial-PP    -> (Spat-Vert-Rel Var)                 sem-spatial-vertical)
+    (Spatial-PP    -> (In-Prep Spat-Depth-Rel Of-Prep
+                               Var)                       sem-spatial-depth)
+    (Spatial-PP    -> (In-Prep Spat-BW-Rel Var Conn Var)  sem-spatial-between)
+    (Spatial-PP    -> (In-Prep Def-Art Same-Rel
+                               Spat-Place-N Spat-Compare
+                               Var)                       sem-spatial-same)
+    (Spatial-PP    -> (In-Prep Indef-Art Diff-Rel
+                               Spat-Place-N Spat-Compare
+                               Var)                       sem-spatial-different)
     ; Causal sentences  -------------------------------------------------------
     (S             -> (S Causal-Verb S)                   sem-causal)
     (S             -> (Punct S Causal-Verb S)             sem-ccausal)
-
-
     ; Noun phrases (quantificational, temporal) -------------------------------
     (Quant-NP      -> (Det Nouns)                         sem-quant)
     (Quant-NP      -> (Det-Scalar Comp-Than Num Nouns)    sem-scalar-quant)
     (Quant-NP      -> (Adv-Exactly Num Nouns)             sem-numerical-quant)
 
     ; Verb phrases (predicates, temporal, causal) -----------------------------
-    (Pred-VP       -> (P-Cop Nouns)                       sem-affirmative-pred)
-    (Pred-VP       -> (P-Cop Neg Nouns)                   sem-negative-pred)
-    (Temp-VP       -> (Temp-Cop Temp-Rel Var)             sem-temporal-relation)
-    (Temp-PP       -> (Temp-Cop Temp-Prep Var)            sem-temporal-preposition)
-    (Temp-PP       -> (Temp-Verb Temp-Prep Var)           sem-temporal-preposition)
-    (Temp-PP       -> (Temp-Verb Temp-Rel Var)            sem-temporal-preposition)
+
 
     ; Terminals and particles -------------------------------------------------
-    (Quest-What    -> what                                what)
-    (Quest-N       -> why                                 why)
-    (Adj-Given     -> given                               given)
-    (Qmark         -> qmark                               qmark)
-    (Conn          -> and                                 and)
-    (Conn          -> or                                  ori)
-    (Conn          -> ore                                 ore)
-    (Conn-ExDisj   -> or                                  or)
-    (Conn-Nor      -> nor                                 nor)
-    (Else-Adv      -> else                                else)
-    (C-Antec       -> if                                  if)
-    (C-Antec       -> iff                                 iff)
-    (C-Co          -> then                                then)
-    (Neg           -> not                                 not)
-    (Punct         -> comma                               comma)
-    (Prob          -> probability                         probability)
-    (P-Cop         -> are                                 are)
-    (S-Cop         -> is                                  is)
-    (Comp-Than     -> than                                than)
-    (Indef-Art     -> an                                  an)
-    (Indef-Art     -> a                                   a)
-    (Def-Art       -> the                                 the)
-    (Det-That      -> that                                that)
-    (Det-Neither   -> neither                             neither)
-    (It-Pro        -> it                                  it)
-    (Case-N        -> case                                case)
-    (Temp-Cop      -> happened                            (t t))
-    (Temp-Verb     -> started                             (t nil))
-    (Temp-Verb     -> ended                               (nil t))
-    (Temp-Prep     -> at                                  =)
-    (Temp-Rel      -> before                              <)
-    (Temp-Rel      -> after                               >)
-    (Temp-Rel      -> while                               include)
-    (Temp-Rel      -> during                              properly-include)
-    (Causal-Verb   -> caused                              caused)
-    (Causal-Verb   -> enabled                             enabled)
-    (Causal-Verb   -> prevented                           prevented)
+    (Conn           -> and                                 and)
+    (Conn           -> or                                  ori)
+    (Conn           -> ore                                 ore)
+    (Conn-ExDisj    -> or                                  or)
+    (Conn-Nor       -> nor                                 nor)
+    (Else-Adv       -> else                                else)
+    (C-Antec        -> if                                  if)
+    (C-Antec        -> iff                                 iff)
+    (C-Co           -> then                                then)
+    (Neg            -> not                                 not)
+    (Punct          -> comma                               comma)
+    (Prob           -> probability                         probability)
+    (P-Cop          -> are                                 are)
+    (S-Cop          -> is                                  is)
+    (Comp-Than      -> than                                than)
+    (Indef-Art      -> an                                  an)
+    (Indef-Art      -> a                                   a)
+    (Def-Art        -> the                                 the)
+    (Det-That       -> that                                that)
+    (Det-Neither    -> neither                             neither)
+    (Predet-Both    -> both                                both)
+    (Predet-Either  -> either                              either)
+    (It-Pro         -> it                                  it)
+    (Case-N         -> case                                case)
+    (Adv-Directly   -> directly                            directly)
+    (Spat-Horiz-Rel -> right                               +)
+    (Spat-Horiz-Rel -> left                                -)
+    (Spat-Vert-Rel  -> above                               +)
+    (Spat-Vert-Rel  -> below                               -)
+    (Spat-Depth-Rel -> front                               +)
+    (Spat-Vert-Rel  -> behind                              (-))
+    (Spat-BW-Rel    -> between                             between)
+    (Same-Rel       -> same                                same)
+    (Diff-Rel       -> different                           different)
+    (Spat-Place-N   -> place                               place)
+    (Spat-Compare   -> as                                  as)
+    (To-Prep        -> to                                  to)
+    (Of-Prep        -> of                                  of)
+    (On-Prep        -> on                                  on)
+    (In-Prep        -> in                                  in)
+    (Temp-Cop       -> happened                            (t t))
+    (Temp-Verb      -> started                             (t nil))
+    (Temp-Verb      -> ended                               (nil t))
+    (Temp-Prep      -> at                                  =)
+    (Temp-Rel       -> before                              <)
+    (Temp-Rel       -> after                               >)
+    (Temp-Rel       -> while                               include)
+    (Temp-Rel       -> during                              properly-include)
+    (Causal-Verb    -> causes                              causes)
+    (Causal-Verb    -> enables                             enables)
+    (Causal-Verb    -> prevents                            prevents)
 
     (Det         -> most    (make-instance 'q-intension
                                            :card '((? 4) (>= 2))
@@ -187,9 +215,9 @@ Section 4.6: Built-in intensions
     (append (find-all word *grammar* :key #'rule-rhs :test #'equal)
             (mapcar #'(lambda (cat) `(,cat -> ,words ,word)) *open-categories*))))
 
-; (rules-starting-with 'Quant-NP) => ((S -> (QUANT-NP PRED-VP) SEM-MONADIC))
 (defun rules-starting-with (cat)
-  "Return a list of rules where cat starts the rhs"
+  "Return a list of rules where cat starts the rhs, e.g.,
+  (rules-starting-with 'Quant-NP) => ((S -> (QUANT-NP PRED-VP) SEM-MONADIC))"
   (find-all cat *grammar*
             :key #'(lambda (rule) (first-or-nil (rule-rhs rule)))))
 
@@ -204,7 +232,7 @@ Section 4.6: Built-in intensions
 
 (defun complete-parses (parses)
   "Those parses that are complete (have no remainder)."
-  (find-all-if #'null parses :key #'parse-rem))
+  (remove-if-not #'null parses :key #'parse-rem))
 
 (defun parse-words (words)
   "Bottom-up parse, returning all parses of any prefix of words.
@@ -250,14 +278,21 @@ Section 4.6: Built-in intensions
   (and (equal 1 (length (tree-rhs tree)))
        (atom (first (tree-rhs tree)))))
 
-(defun parse (words)
+(defmethod parse ((words string))
+  "When parse is fed a string, it splits the string up, converts it to a list,
+   and parses the list"
+  #+lispworks (setf words (split-sequence " " words))
+  #+ccl (setf words (split-sequence #\Space words))
+  (parse (mapcar #'read-from-string words)))
+
+(defmethod parse ((words list))
   "Return all possible meanings of a phrase. Throw away the syntactic part."
   (trc "Language" (format nil "Parsed string ~A" words))
   (let* ((parsetrees (parser words))
          (parses (remove-duplicates
                   (remove-if-not #'(lambda (x) (equal 's (first x))) parsetrees) :test #'equals)))
     (case (length parses)
-          (0         (error "Syntax error."))
+          (0         (error 'parser-error :text "syntax error."))
           (1         (tree-sem (first parses)))
           (otherwise (first (mapcar 'tree-sem parses))))))
 ;          (otherwise (error "Syntactic ambiguity detected.")))))
@@ -272,8 +307,6 @@ Section 4.6: Built-in intensions
     (apply #'remove item sequence
            :test (complement test) keyword-args)))
 
-(setf (symbol-function 'find-all-if) #'remove-if-not)
-
 (defun append1 (items item)
   "Add item to end of list of items"
   (append items (list item)))
@@ -284,7 +317,7 @@ Section 4.6: Built-in intensions
 
 (defun sem-aff-var (var)
   (make-instance 's-intension :first-clause var :second-clause nil
-                        :first-only  'fact
+                        :first-only  'possible
                         :second-only nil
                         :both        nil
                         :neither     nil))
@@ -356,6 +389,54 @@ Section 4.6: Built-in intensions
   (let ((int (first (last parse))))
     (negate int)))
   
+(defmethod negate ((int intension))
+  "Negates an intension by applying sentential negation, where an given
+   intension is set as the first-clause of a new intension."
+  (make-instance 's-intension
+                 :first-clause int
+                 :second-clause nil
+                 :first-only  'impossible
+                 :second-only nil
+                 :both        nil
+                 :neither     nil))
+
+(defmethod negate ((intension s-intension))
+  "Implements small scope principled described and validate in Khemlani, Orenes, & Johnson-Laird (2014)."
+  (setf negated (copy-class-instance intension))
+  (setf (both negated)        (reverse-modal (both intension))
+        (first-only negated)  (reverse-modal (first-only intension))
+        (second-only negated) (reverse-modal (second-only intension))
+        (neither negated)     (reverse-modal (neither intension)))
+  (cond ((is-affirmative-atom intension) (setf (first-only negated) 'impossible))
+        ((is-negative-atom intension) (setf (first-only negated) 'possible))
+        ((is-and intension) (setf (neither negated)     'initial))
+        ((is-ori intension) (setf (neither negated)     'initial))
+        ((is-ore intension) (setf (neither negated)     'initial))
+        ((is-if  intension) (setf (first-only negated)  'initial))
+        ((is-iff intension) (setf (first-only negated)  'initial
+                                  (second-only negated) 'initial)))
+  negated)
+
+#|(defmethod negate ((int s-intension))
+  "Negates an s-intension by swapping impossible states to possible
+   and vice versa. Handles conjunctions specially to yield sentential
+   negation instead of intensional negation, since there is no lexicalized
+   version of 'nand' (not-and) or 'noth' (not-both); see Horn (1972)"
+  (if (or (is-and int) (is-if int))
+      (call-next-method)
+    (let* ((negated-semantics (list (reverse-modal (first-only int)) (reverse-modal (second-only int))
+                                    (reverse-modal (both int)) (reverse-modal (neither int))))
+           (negated-semantics (if (= (length (all-positions 'possible negated-semantics)) 1)
+                                  (substitute 'initial 'possible negated-semantics)
+                                negated-semantics)))
+      (make-instance 's-intension
+                     :first-clause  (first-clause int)
+                     :second-clause (second-clause int)
+                     :first-only    (nth 0 negated-semantics)   
+                     :second-only   (nth 1 negated-semantics)   
+                     :both          (nth 2 negated-semantics)   
+                     :neither       (nth 3 negated-semantics))))) |#
+
 #|
 Intensions contain five parameters. The role of each parameter is summarized here:
 
@@ -434,6 +515,10 @@ v.   Universality t = The quantifier is a universal one, such as 'all' or 'none'
   (declare (ignore cop))
   (list 'include (list obj)))
 
+(defun sem-affirmative-pred-conn (cop predet obj1 conn obj2)
+  (declare (ignore cop) (ignore predet))
+  (list 'include (list obj1 conn obj2)))
+
 (defun sem-negative-pred (cop neg obj)
   (declare (ignore cop neg))
   (list 'not-include (list obj)))
@@ -494,19 +579,19 @@ v.   Universality t = The quantifier is a universal one, such as 'all' or 'none'
 
 (defun sem-causal (first relation second)
   (case relation
-    (caused  (make-instance 'c-intension :first-clause first :second-clause second
+    (causes  (make-instance 'c-intension :first-clause first :second-clause second
                         :first-only  'impossible
                         :second-only 'possible
                         :both        'initial
                         :neither     'possible
                         :constraint   nil))
-    (enabled (make-instance 'c-intension :first-clause first :second-clause second
+    (enables (make-instance 'c-intension :first-clause first :second-clause second
                         :first-only  'possible
                         :second-only 'impossible
                         :both        'initial
                         :neither     'possible
                         :constraint   nil))
-    (prevented (make-instance 'c-intension :first-clause first :second-clause second
+    (prevents (make-instance 'c-intension :first-clause first :second-clause second
                         :first-only  'initial
                         :second-only 'possible
                         :both        'impossible
@@ -515,6 +600,44 @@ v.   Universality t = The quantifier is a universal one, such as 'all' or 'none'
 
 (defun sem-ccausal (comma first relation second)
   (sem-causal first relation second))
+
+(defun sem-spatial (subject int)
+  (setf (subject int) subject)
+  (when (spatial-template int)
+    (setf (spatial-template int)
+          (mapcar #'(lambda (x) (substitute subject 'subject x :test #'equals)) (spatial-template int))))
+  int)
+
+(defun sem-spatial-vp (is int)
+  (setf (spatial-distance int) :infinity)
+  int)
+
+(defun sem-spatial-adv-vp (is directly int)
+  (if (member (spatial-relation int) '(:equal :not-equal))
+      (setf (spatial-distance int) :infinity)
+    (setf (spatial-distance int) 1))
+  int)
+
+(defun sem-spatial-horizontal (to the1 relation of obj)
+  (make-instance 'sp-intension :obj obj :rel relation :dim :left-right :temp nil :dist nil))
+
+(defun sem-spatial-vertical (relation obj)
+  (if (listp relation)
+      (make-instance 'sp-intension :obj obj :rel (first relation) :dim :behind-front :temp nil :dist nil)
+  (make-instance 'sp-intension :obj obj :rel relation :dim :below-above :temp nil :dist nil)))
+
+(defun sem-spatial-depth (in relation of obj)
+  (make-instance 'sp-intension :obj obj :rel relation :dim :behind-front :temp nil :dist nil))
+
+(defun sem-spatial-between (in between obj1 and obj2)
+  (make-instance 'sp-intension :obj (list obj1 obj2) :rel nil :dim nil :dist nil :temp (list (list obj1 'subject obj2)
+                                                                                             (list obj2 'subject obj1))))
+
+(defun sem-spatial-same (in the same place as obj)
+  (make-instance 'sp-intension :obj obj :rel :equal :dim nil :temp nil :dist nil))
+
+(defun sem-spatial-different (in a different place as obj)
+  (make-instance 'sp-intension :obj obj :rel :not-equal :dim nil :temp nil :dist nil))
 
 ; ---------------------------------------------------------------------------------
 ; Section 4.4: Memoization and parsing efficiency
