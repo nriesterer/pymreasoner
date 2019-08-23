@@ -1,6 +1,7 @@
-.DS_Store
 __pycache__/
+.ccl/
+.DS_Store
+.mreasoner/
+*.egg-info/
 *.pyc
 ~*
-.ccl/
-data/

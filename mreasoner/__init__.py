@@ -3,5 +3,7 @@ implementation.
 
 """
 
-from .mreasoner import MReasoner
+from .mreasoner import MReasoner, source_path
 from .clozure import ClozureCL
+
+__version__ = '0.1'

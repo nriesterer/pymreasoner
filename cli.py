@@ -53,12 +53,12 @@ def main():
     # Initialize MReasoner instance
     mreas = mreasoner.MReasoner(
         ccl_path=cloz.exec_path(),
-        mreasoner_dir='mReasoner'
+        mreasoner_dir=mreasoner.source_path()
     )
 
     print('Interactive mReasoner shell. Commands:')
     print('quit, q, exit        - terminate the shell')
-    print('param <name>         - print parameter value')
+    print('param                - print parameter values')
     print('param <name> <value> - set parameter value')
     print('query <task>         - query syllogistic task (e.g., AA1)')
     print('---------------------------------------------------------')

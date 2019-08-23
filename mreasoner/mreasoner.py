@@ -10,8 +10,48 @@ import subprocess
 import threading
 import time
 
+import urllib.request
+import zipfile
+
 import numpy as np
 import scipy.optimize as so
+
+def source_path(mreas_path='.mreasoner'):
+    """ Determines the source path of mReasoner if existent. Downloads a copy if necessary.
+
+    Parameters
+    ----------
+    mreas_path : str
+        Target path for the mReasoner source copy.
+
+    Returns
+    -------
+    str
+        Path to the directory containing the mReasoner sources.
+
+    """
+
+    if not os.path.exists(mreas_path):
+        # Create the mreasoner directory
+        os.mkdir(mreas_path)
+
+        # Download the mreasoner source
+        link = 'https://nc.informatik.uni-freiburg.de/index.php/s/JyMd3g36wXdgwy3/download'
+        dl_target = mreas_path + os.sep + 'mReasoner.zip'
+        urllib.request.urlretrieve(link, dl_target)
+
+        # Unzip content
+        with zipfile.ZipFile(dl_target, 'r') as zip_ref:
+            zip_ref.extractall(mreas_path)
+
+    # Look for mReasoner directory
+    for name in os.listdir(mreas_path):
+        path = mreas_path + os.sep + name
+        if not os.path.isdir(path) or name.startswith('_'):
+            continue
+        mreas_path = path + os.sep + 'src'
+
+    return mreas_path
 
 class MReasoner():
     """ LISP mReasoner wrapper. Executes a Clozure Common LISP subprocess to run an unmodified

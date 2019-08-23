@@ -1,0 +1,21 @@
+{
+    "data.train": "data/Ragni2016.csv",
+    "data.test": "data/Ragni2016.csv",
+    "corresponding_data": true,
+    "models": [
+        "ccobra_mreasoner.py",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/Baseline/MFA-Model",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/Baseline/Uniform-Model",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/Baseline/NVC-Model",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/2012-Khemlani/Atmosphere",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/2012-Khemlani/Conversion",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/2012-Khemlani/Matching",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/2012-Khemlani/MentalModels",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/2012-Khemlani/PHM",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/2012-Khemlani/PSYCOP",
+        "/Users/riestern/Documents/research/ccobra/ccobra/benchmarks/syllogistic/models/2012-Khemlani/VerbalModels"
+    ],
+    "domain_encoders": {
+        "syllogistic": "%ccobra%/syllogistic/encoder_syl.py"
+    }
+}
