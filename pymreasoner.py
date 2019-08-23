@@ -30,7 +30,7 @@ def parse_arguments():
     elif args['loglevel'] == 'debug':
         args['loglevel'] = logging.DEBUG
     else:
-        args['loglevel'] = logging.CRITICAL
+        args['loglevel'] = logging.WARNING
 
     return args
 

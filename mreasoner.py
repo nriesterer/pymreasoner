@@ -2,12 +2,15 @@
 
 """
 
-import os
+import copy
 import logging
+import os
+import queue
 import subprocess
 import threading
-import queue
+import time
 
+import numpy as np
 import scipy.optimize as so
 
 class MReasoner():
@@ -55,7 +58,7 @@ class MReasoner():
                 logger.debug('mReasoner:%s', text)
 
                 # Ignore comments and query results
-                if text.startswith(';') or text.startswith('?'):
+                if text.startswith(';'):
                     continue
 
                 # Catch the termination signal
@@ -65,16 +68,34 @@ class MReasoner():
                 if ('While executing:' in text) or ('Error:' in text):
                     self.resp_queue.put('HALT')
 
+                # Handle query results
+                if text.startswith('?'):
+                    query_result = text[2:]
 
-                # Catch mReasoner computation output
-                if text == '"RESULT"':
-                    # Actual result is in line 2 after
-                    logger.debug('RESULT observed!')
-                    text = proc.stdout.readline().decode('ascii').strip().replace('"', '')
-                    logger.debug('Ignoring:%s', text)
-                    text = proc.stdout.readline().decode('ascii').strip().replace('"', '')
-                    logger.debug('Queue-Result:%s', text)
-                    self.resp_queue.put(text)
+                    # Handle different query results
+                    is_float = False
+                    try:
+                        float(query_result)
+                        is_float = True
+                    except:
+                        pass
+
+                    # Ignore float results
+                    if is_float:
+                        continue
+
+                    if query_result[0] == '(' and query_result[-1] == ')':
+                        logger.debug('Queue-Quant:%s', query_result)
+                        self.resp_queue.put(query_result)
+                    elif query_result[0] == '"' and query_result[-1] == '"':
+                        query_result = query_result.replace('"', '')
+                        logger.debug('Queue-Concl:%s', query_result)
+                        self.resp_queue.put(query_result)
+                    elif query_result =='NIL':
+                        logger.debug('Queue-NIL:%s', query_result)
+                        self.resp_queue.put(query_result)
+                    else:
+                        logger.debug('Queue-INVAL:%s', query_result)
 
             logger.debug('terminating...')
 
@@ -87,12 +108,13 @@ class MReasoner():
         self._send('(defvar resp 0)')
 
         # Initialize parameter values
-        self.params = {
+        self.default_params = {
             'epsilon': 0.0,
             'lambda': 4.0,
             'omega': 1.0,
             'sigma': 0.0
         }
+        self.params = copy.deepcopy(self.default_params)
 
         self.set_param('epsilon', self.params['epsilon'])
         self.set_param('lambda', self.params['lambda'])
@@ -173,18 +195,32 @@ class MReasoner():
         self.logger.debug('Query:%s', cmd)
         self._send(cmd)
 
-        # Send the result interpretation query
-        cmd = '(abbreviate (first resp))'
-        cmd = '(prin1 "RESULT")(prin1 {})'.format(cmd)
-        self.logger.debug('Query:%s', cmd)
-        self._send(cmd)
+        # Check query result
+        query_result = self.resp_queue.get()
+        self.logger.debug('Query result: "%s"', query_result)
 
-        # Retrieve queue output
-        queue_out = self.resp_queue.get()
-        if queue_out == 'HALT':
-            exit()
+        conclusion = None
+        if 'Q-INTENSION' in query_result:
+            # Send the result interpretation query
+            cmd = '(abbreviate (nth (random (length resp)) resp))'
+            self.logger.debug('Query:%s', cmd)
+            self._send(cmd)
 
-        return queue_out
+            # Retrieve queue output
+            queue_out = self.resp_queue.get()
+
+            conclusion = queue_out
+        elif ('NULL-INTENSION' in query_result) or (query_result == 'NIL'):
+            self.logger.info('NVC-RESULT:%s', query_result)
+            if 'Q-INTENSION' in query_result:
+                assert False
+            conclusion = 'NVC'
+        else:
+            self.logger.warning('QUERY-RES-INVALID:%s', query_result)
+            assert False
+
+        self.logger.debug('%s->%s', syllog, conclusion)
+        return conclusion
 
     def terminate(self):
         """ Terminate mReasoner and its parent instance of Clozure Common LISP.
@@ -193,7 +229,7 @@ class MReasoner():
 
         # Shutdown the threads
         self._send('(prin1 "TERMINATE")')
-        self.logger.info('Waiting for stdout...')
+        self.logger.debug('Waiting for stdout...')
         self.readerstdout.join()
 
         # Terminate Clozure
@@ -223,8 +259,13 @@ class MReasoner():
 
         # Send parameter change to mReasoner
         cmd = '(setf +{}+ {:f})'.format(param, value)
-        self.logger.info('Param-Set: %s->%f:%s', param, value, cmd)
+        self.logger.debug('Param-Set: %s->%f:%s', param, value, cmd)
         self._send(cmd)
+
+    def set_param_vec(self, x):
+        param_names = ['epsilon', 'lambda', 'omega', 'sigma']
+        for idx in range(len(x)):
+            self.set_param(param_names[idx], x[idx])
 
     def _fit_fun(self, x, *args):
         """ Fitting helper function. Receives parameter values and computes accuracy on given
@@ -245,9 +286,7 @@ class MReasoner():
         train_x, train_y = args
 
         # Set the parameters
-        param_names = ['epsilon', 'lambda', 'omega', 'sigma']
-        for idx in range(len(x)):
-            self.set_param(param_names[idx], x[idx])
+        self.set_param_vec(x)
 
         hits = 0
         for idx in range(len(train_x)):
@@ -258,9 +297,9 @@ class MReasoner():
 
             hits += (resp == pred)
 
-        acc = hits / len(train_x)
-        self.logger.info('Fitting (p=%s): %f', x, acc)
-        return acc
+        inaccuracy = 1 - (hits / len(train_x))
+        self.logger.debug('Fitting-Eval: (p=%s): %f', x, inaccuracy)
+        return inaccuracy
 
     def fit(self, train_x, train_y, num_fits=10):
         """ Fits mReasoner parameters to the specified data.
@@ -280,12 +319,15 @@ class MReasoner():
 
         """
 
-        self.logger.info('Fitting!')
-
         results = []
-        for _ in range(num_fits):
-            start_params = [x[1] for x in sorted(self.params.items())]
+        n_successes = 0
+        for idx in range(num_fits):
+            self.logger.debug('Starting fit {}/{}...'.format(idx + 1, num_fits))
+            start_time = time.time()
+
+            # start_params = [x[1] for x in sorted(self.params.items())]
             param_bounds = [[0.0, 1.0], [0.1, 8.0], [0.0, 1.0], [0.0, 1.0]]
+            start_params = [np.random.uniform(lims[0], lims[1]) for lims in param_bounds]
 
             res = so.minimize(
                 self._fit_fun,
@@ -295,8 +337,25 @@ class MReasoner():
                 args=(train_x, train_y))
 
             if res.success:
+                self.logger.debug('Fitting iteration success:\n%s', res)
                 results.append((res.fun, res.x))
+                n_successes += 1
+            else:
+                self.logger.warning('Fitting iteration failed:\n%s', res)
 
-        print(results)
+            self.logger.debug('...fit took {:4f}s'.format(time.time() - start_time))
 
-        return 0
+        if n_successes != num_fits:
+            self.logger.warning('%d/%d fitting runs unsuccessful', num_fits - n_successes, num_fits)
+            # If all fits unsuccessful, use default parameters
+            if n_successes == 0:
+                self.logger.warning('Fitting failed, setting to default params')
+                for param, value in self.default_params.items():
+                    self.set_param(param, value)
+                return -1, [self.default_params[x] for x in ['epsilon', 'lambda', 'omega', 'sigma']]
+
+        # Obtain best parameter configuration
+        optim_score, optim_params = sorted(results, key=lambda x: x[0], reverse=True)[0]
+        self.set_param_vec(optim_params)
+
+        return optim_score, optim_params
