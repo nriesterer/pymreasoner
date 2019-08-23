@@ -1,4 +1,4 @@
-""" mReasoner interface.
+""" Interface class for the LISP-based mReasoner implementation.
 
 """
 
@@ -77,7 +77,7 @@ class MReasoner():
                     try:
                         float(query_result)
                         is_float = True
-                    except:
+                    except ValueError:
                         pass
 
                     # Ignore float results
@@ -91,7 +91,7 @@ class MReasoner():
                         query_result = query_result.replace('"', '')
                         logger.debug('Queue-Concl:%s', query_result)
                         self.resp_queue.put(query_result)
-                    elif query_result =='NIL':
+                    elif query_result == 'NIL':
                         logger.debug('Queue-NIL:%s', query_result)
                         self.resp_queue.put(query_result)
                     else:
@@ -262,12 +262,22 @@ class MReasoner():
         self.logger.debug('Param-Set: %s->%f:%s', param, value, cmd)
         self._send(cmd)
 
-    def set_param_vec(self, x):
-        param_names = ['epsilon', 'lambda', 'omega', 'sigma']
-        for idx in range(len(x)):
-            self.set_param(param_names[idx], x[idx])
+    def set_param_vec(self, params):
+        """ Directly set a vector of params.
 
-    def _fit_fun(self, x, *args):
+        Parameters
+        ----------
+        params : list(float)
+            Vector of parameter values. Interpreted according to the order ['epsilon', 'lambda',
+            'omega', 'sigma'].
+
+        """
+
+        param_names = ['epsilon', 'lambda', 'omega', 'sigma']
+        for name, value in zip(param_names, params):
+            self.set_param(name, value)
+
+    def _fit_fun(self, params, *args):
         """ Fitting helper function. Receives parameter values and computes accuracy on given
         training and test data.
 
@@ -286,19 +296,15 @@ class MReasoner():
         train_x, train_y = args
 
         # Set the parameters
-        self.set_param_vec(x)
+        self.set_param_vec(params)
 
         hits = 0
-        for idx in range(len(train_x)):
-            task = train_x[idx]
-            resp = train_y[idx]
-
+        for task, resp in zip(train_x, train_y):
             pred = self.query(task)
-
             hits += (resp == pred)
 
         inaccuracy = 1 - (hits / len(train_x))
-        self.logger.debug('Fitting-Eval: (p=%s): %f', x, inaccuracy)
+        self.logger.debug('Fitting-Eval: (p=%s): %f', params, inaccuracy)
         return inaccuracy
 
     def fit(self, train_x, train_y, num_fits=10):
@@ -320,9 +326,8 @@ class MReasoner():
         """
 
         results = []
-        n_successes = 0
         for idx in range(num_fits):
-            self.logger.debug('Starting fit {}/{}...'.format(idx + 1, num_fits))
+            self.logger.debug('Starting fit %d/%d...', idx + 1, num_fits)
             start_time = time.time()
 
             # start_params = [x[1] for x in sorted(self.params.items())]
@@ -339,16 +344,16 @@ class MReasoner():
             if res.success:
                 self.logger.debug('Fitting iteration success:\n%s', res)
                 results.append((res.fun, res.x))
-                n_successes += 1
             else:
                 self.logger.warning('Fitting iteration failed:\n%s', res)
 
             self.logger.debug('...fit took {:4f}s'.format(time.time() - start_time))
 
-        if n_successes != num_fits:
-            self.logger.warning('%d/%d fitting runs unsuccessful', num_fits - n_successes, num_fits)
+        if len(results) != num_fits:
+            self.logger.warning(
+                '%d/%d fitting runs unsuccessful', num_fits - len(results), num_fits)
             # If all fits unsuccessful, use default parameters
-            if n_successes == 0:
+            if not results:
                 self.logger.warning('Fitting failed, setting to default params')
                 for param, value in self.default_params.items():
                     self.set_param(param, value)

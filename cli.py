@@ -1,21 +1,23 @@
-""" pymreasoner entry point. Serves as a test environment for development.
+""" Command line interface for mReasoner. Launches an interactive shell for querying mReasoner.
 
 """
 
 import logging
 import argparse
 
-import numpy as np
-
 import mreasoner
-import clozure
 
 def parse_arguments():
+    """ Parse the command line arguments.
+
+    Returns
+    -------
+    dict(str, object)
+        Command line arguments.
+
+    """
+
     parser = argparse.ArgumentParser(description='mReasoner CLI')
-    parser.add_argument(
-        '-i', '--interactive',
-        help='Launch interactive shell',
-        action='store_true')
     parser.add_argument(
         '-ll', '--loglevel',
         help='Set logger level (debug, info)',
@@ -46,7 +48,7 @@ def main():
     logging.basicConfig(level=args['loglevel'])
 
     # Initialize LISP
-    cloz = clozure.ClozureCL()
+    cloz = mreasoner.ClozureCL()
 
     # Initialize MReasoner instance
     mreas = mreasoner.MReasoner(
@@ -54,7 +56,14 @@ def main():
         mreasoner_dir='mReasoner'
     )
 
-    if args['interactive']:
+    print('Interactive mReasoner shell. Commands:')
+    print('quit, q, exit        - terminate the shell')
+    print('param <name>         - print parameter value')
+    print('param <name> <value> - set parameter value')
+    print('query <task>         - query syllogistic task (e.g., AA1)')
+    print('---------------------------------------------------------')
+
+    try:
         while True:
             inp = input('> ')
             if inp in ['quit', 'q', 'exit']:
@@ -77,18 +86,11 @@ def main():
                     param = setcmd[1]
                     value = float(setcmd[2])
                     mreas.set_param(param, value)
-    else:
-        # Load the test fitting data
-        tasks = np.load('data/tasks.npy')
-        resps = np.load('data/resps.npy')
+    except KeyboardInterrupt:
+        # Gracefully handle keyboard interrupt
+        pass
 
-        # Test fitting mReasoner
-        train_x = tasks[0]
-        train_y = resps[0]
-
-        res = mreas.fit(train_x, train_y)
-        print(res)
-
+    # Finalize by terminating the mreasoner connection
     mreas.terminate()
 
 if __name__ == '__main__':
