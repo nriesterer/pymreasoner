@@ -16,6 +16,7 @@ import zipfile
 import numpy as np
 import scipy.optimize as so
 
+
 def source_path(mreas_path='.mreasoner'):
     """ Determines the source path of mReasoner if existent. Downloads a copy if necessary.
 
