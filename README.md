@@ -11,11 +11,21 @@ This project aims at providing a Python-based interface to the LISP-based cognit
 
 File overview:
 
-- `mReasoner/`: mReasoner LISP source code (version r6684)
-- `clozure.py`: Helper class for maintaining Clozure Common LISP binaries
-- `mreasoner.py`: mReasoner interface class. Creates a Clozure CL session loading mReasoner's LISP code and provides methods for interaction
-- `pymreasoner.py`: Main entry point for developmental purposes
+- `ccobratest/`: CCOBRA model implementation
+- `mreasoner/`: Python package sources
+- `cli.py`: mReasoner command line interface
+- `mReasoner-r6684.zip`: mReasoner source code
+- `setup.py`: Python package installer
 
 ### Requirements
 
 - Python >=3.7
+
+### Installation
+
+Download the repository and launch a terminal/cmd:
+
+```
+$> cd /path/to/repository
+$> python setup.py install
+```
