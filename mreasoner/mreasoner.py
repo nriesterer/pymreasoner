@@ -400,7 +400,7 @@ class MReasoner():
                 return -1, [self.default_params[x] for x in ['epsilon', 'lambda', 'omega', 'sigma']]
 
         # Obtain best parameter configuration
-        optim_score, optim_params = sorted(results, key=lambda x: x[0], reverse=True)[0]
+        optim_score, optim_params = sorted(results, key=lambda x: x[0])[0]
         self.set_param_vec(optim_params)
 
         return optim_score, optim_params
