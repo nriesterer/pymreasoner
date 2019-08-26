@@ -10,7 +10,7 @@ Demo implementation for a mReasoner-based model for the CCOBRA model evaluation 
 
 ### Contents
 
-- `data`: Folder containing example evaluation data (`Ragni2016` from the CCOBRA framework)
+- `data/`: Folder containing example evaluation data (`Ragni2016` from the CCOBRA framework)
 - `bench.json`: Benchmark definition
 - `ccobra_mreasoner.py`: mReasoner model for CCOBRA
 
