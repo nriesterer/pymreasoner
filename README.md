@@ -5,6 +5,8 @@ Python interface for the mental models based syllogistic reasoning model mReason
 
 > Khemlani, S., & Johnson-Laird, P. N. (2013). The processes of inference. *Argument & Computation*, 4, 1-20.
 
+Find the development version of mReasoner here: [https://github.com/skhemlani/mReasoner](https://github.com/skhemlani/mReasoner)
+
 ### Description
 
 This project aims at providing a Python-based interface to the LISP-based cognitive inference model mReasoner. It follows the approach to create a live-session using a Clozure Common LISP interpreter to directly communicate with the original and unmodified implementation of mReasoner.
