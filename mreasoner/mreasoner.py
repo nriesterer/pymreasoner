@@ -431,7 +431,6 @@ class MReasoner():
         if old_params:
             best_params = old_params
             best_error = self._fit_fun(best_params, train_x, train_y)
-            best_error2 = self._fit_fun(best_params, train_x, train_y)
 
         for _ in range(num):
             p_epsilon = np.random.uniform(*self.param_bounds[0])
