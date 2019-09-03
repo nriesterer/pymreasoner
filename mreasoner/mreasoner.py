@@ -146,6 +146,7 @@ class MReasoner():
 
         # Load mReasoner and setup result variable
         mreasoner_file = mreasoner_dir + os.sep + "+mReasoner.lisp"
+        mreasoner_file = mreasoner_file.replace('\\', '/')
         self._send('(load "{}")'.format(mreasoner_file))
         self._send('(defvar resp 0)')
 
