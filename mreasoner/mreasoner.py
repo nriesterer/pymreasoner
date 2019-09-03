@@ -76,6 +76,7 @@ class MReasoner():
 
         # Initialize logger instance
         self.logger = logging.getLogger(__name__)
+        self.param_bounds = [[0.0, 1.0], [0.1, 8.0], [0.0, 1.0], [0.0, 1.0]]
 
         self.proc = subprocess.Popen(
             [ccl_path],
@@ -243,16 +244,15 @@ class MReasoner():
         conclusion = None
         if 'Q-INTENSION' in query_result:
             # Send the result interpretation query
-            cmd = '(abbreviate (nth (random (length resp)) resp))'
+            # cmd = '(abbreviate (nth (random (length resp)) resp))'
+            cmd = "(map 'list (lambda (x) (abbreviate x)) resp)"
             self.logger.debug('Query:%s', cmd)
             self._send(cmd)
 
             # Retrieve queue output
-            queue_out = self.resp_queue.get()
-
-            conclusion = queue_out
+            conclusion = self.resp_queue.get()
         elif ('NULL-INTENSION' in query_result) or (query_result == 'NIL'):
-            self.logger.info('NVC-RESULT:%s', query_result)
+            self.logger.debug('NVC-RESULT:%s', query_result)
             if 'Q-INTENSION' in query_result:
                 assert False
             conclusion = 'NVC'
@@ -260,8 +260,9 @@ class MReasoner():
             self.logger.warning('QUERY-RES-INVALID:%s', query_result)
             assert False
 
-        self.logger.debug('%s->%s', syllog, conclusion)
-        return conclusion
+        conclusion_candidates = conclusion.replace('"', '').replace('(', '').replace(')', '').split()
+        self.logger.debug('%s->%s', syllog, conclusion_candidates)
+        return conclusion_candidates
 
     def terminate(self):
         """ Terminate mReasoner and its parent instance of Clozure Common LISP.
@@ -339,12 +340,12 @@ class MReasoner():
         # Set the parameters
         self.set_param_vec(params)
 
-        hits = 0
+        score = 0
         for task, resp in zip(train_x, train_y):
             pred = self.query(task)
-            hits += (resp == pred)
+            score += 1/len(pred) if resp in pred else 0
 
-        inaccuracy = 1 - (hits / len(train_x))
+        inaccuracy = 1 - (score / len(train_x))
         self.logger.debug('Fitting-Eval: (p=%s): %f', params, inaccuracy)
         return inaccuracy
 
@@ -372,14 +373,13 @@ class MReasoner():
             start_time = time.time()
 
             # start_params = [x[1] for x in sorted(self.params.items())]
-            param_bounds = [[0.0, 1.0], [0.1, 8.0], [0.0, 1.0], [0.0, 1.0]]
-            start_params = [np.random.uniform(lims[0], lims[1]) for lims in param_bounds]
+            start_params = [np.random.uniform(lims[0], lims[1]) for lims in self.param_bounds]
 
             res = so.minimize(
                 self._fit_fun,
                 start_params,
                 method='L-BFGS-B',
-                bounds=param_bounds,
+                bounds=self.param_bounds,
                 args=(train_x, train_y))
 
             if res.success:
@@ -405,3 +405,46 @@ class MReasoner():
         self.set_param_vec(optim_params)
 
         return optim_score, optim_params
+
+    def fit_grid(self, train_x, train_y, num=10):
+        best_error = 2
+        best_params = None
+
+        for p_epsilon in np.linspace(*self.param_bounds[0], num):
+            for p_lambda  in np.linspace(*self.param_bounds[1], num):
+                for p_omega in np.linspace(*self.param_bounds[2], num):
+                    for p_sigma in np.linspace(*self.param_bounds[3], num):
+                        params = [p_epsilon, p_lambda, p_omega, p_sigma]
+                        error = self._fit_fun(params, train_x, train_y)
+
+                        if error < best_error:
+                            best_error = error
+                            best_params = params
+
+        self.set_param_vec(best_params)
+        return best_error, best_params
+
+    def fit_rnd(self, train_x, train_y, num=10, old_params=None):
+        best_error = 2
+        best_params = None
+
+        if old_params:
+            best_params = old_params
+            best_error = self._fit_fun(best_params, train_x, train_y)
+            best_error2 = self._fit_fun(best_params, train_x, train_y)
+
+        for _ in range(num):
+            p_epsilon = np.random.uniform(*self.param_bounds[0])
+            p_lambda = np.random.uniform(*self.param_bounds[1])
+            p_omega = np.random.uniform(*self.param_bounds[2])
+            p_sigma = np.random.uniform(*self.param_bounds[3])
+
+            params = [p_epsilon, p_lambda, p_omega, p_sigma]
+            error = self._fit_fun(params, train_x, train_y)
+
+            if error < best_error:
+                best_error = error
+                best_params = params
+
+        self.set_param_vec(best_params)
+        return best_error, best_params

@@ -4,7 +4,13 @@
 
 import ccobra
 import mreasoner
+import numpy as np
 
+import time
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 class CCobraMReasoner(ccobra.CCobraModel):
     """ mReasoner CCOBRA model implementation.
@@ -26,6 +32,12 @@ class CCobraMReasoner(ccobra.CCobraModel):
 
         # Member variables
         self.fit = fit
+        self.adapt_x = []
+        self.adapt_y = []
+        self.old_params = [self.mreasoner.default_params[value] for value in ['epsilon', 'lambda', 'omega', 'sigma']]
+
+        self.cnt = 0
+        self.adapt_cnt = 0
 
     def __deepcopy__(self, memo):
         """ Custom deepcopy required because thread locks cannot be pickled. Deepcopy realized by
@@ -42,6 +54,9 @@ class CCobraMReasoner(ccobra.CCobraModel):
             Copied object instance.
 
         """
+
+        self.cnt += 1
+        print('Copy', self.cnt)
 
         new = CCobraMReasoner()
 
@@ -81,7 +96,7 @@ class CCobraMReasoner(ccobra.CCobraModel):
                 train_x.append(enc_task)
                 train_y.append(enc_resp)
 
-        self.mreasoner.fit(train_x, train_y, 5)
+        self.mreasoner.fit_grid(train_x, train_y, 5)
 
     def predict(self, item, **kwargs):
         """ Queries mReasoner for a prediction.
@@ -99,5 +114,21 @@ class CCobraMReasoner(ccobra.CCobraModel):
         """
 
         enc_task = ccobra.syllogistic.encode_task(item.task)
-        enc_resp = self.mreasoner.query(enc_task)
+        enc_resp_cands = self.mreasoner.query(enc_task)
+        enc_resp = np.random.choice(enc_resp_cands)
         return ccobra.syllogistic.decode_response(enc_resp, item.task)
+
+    def adapt(self, item, truth, **kwargs):
+        start = time.time()
+
+        enc_task = ccobra.syllogistic.encode_task(item.task)
+        enc_resp = ccobra.syllogistic.encode_response(truth, item.task)
+
+        self.adapt_x.append(enc_task)
+        self.adapt_y.append(enc_resp)
+
+        best_error, best_params = self.mreasoner.fit_rnd(self.adapt_x, self.adapt_y, num=5, old_params=self.old_params)
+        self.old_params = best_params
+
+        self.adapt_cnt += 1
+        print('   adaption {} took {:.4f}s: {}'.format(self.adapt_cnt, time.time() - start, best_error))
