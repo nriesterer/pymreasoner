@@ -147,7 +147,11 @@ class MReasoner():
         # Load mReasoner and setup result variable
         mreasoner_file = mreasoner_dir + os.sep + "+mReasoner.lisp"
         mreasoner_file = mreasoner_file.replace('\\', '/')
-        self._send('(load "{}")'.format(mreasoner_file))
+        self._send('(compile-file "{}")'.format(mreasoner_file))
+
+        fasl_file = [x for x in os.listdir(mreasoner_dir) if x.endswith('fsl')][0]
+        fasl_path = mreasoner_dir + os.sep + fasl_file
+        self._send('(load "{}")'.format(fasl_path))
         self._send('(defvar resp 0)')
 
         # Initialize parameter values

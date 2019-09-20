@@ -17,7 +17,7 @@ class CCobraMReasoner(ccobra.CCobraModel):
 
     """
 
-    def __init__(self, name='mReasoner', fit=True):
+    def __init__(self, name='mReasoner', fit=False):
         """ Initializes the CCOBRA model by launching the interactive LISP subprocess.
 
         """
