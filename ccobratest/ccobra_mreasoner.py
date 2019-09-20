@@ -17,7 +17,7 @@ class CCobraMReasoner(ccobra.CCobraModel):
 
     """
 
-    def __init__(self, name='mReasoner', fit=False):
+    def __init__(self, name='mReasoner', fit=True):
         """ Initializes the CCOBRA model by launching the interactive LISP subprocess.
 
         """
@@ -98,6 +98,9 @@ class CCobraMReasoner(ccobra.CCobraModel):
 
         self.mreasoner.fit_grid(train_x, train_y, 5)
 
+    def person_train(self, dataset, **kwargs):
+        self.pre_train([dataset])
+
     def predict(self, item, **kwargs):
         """ Queries mReasoner for a prediction.
 
@@ -127,7 +130,7 @@ class CCobraMReasoner(ccobra.CCobraModel):
         self.adapt_x.append(enc_task)
         self.adapt_y.append(enc_resp)
 
-        best_error, best_params = self.mreasoner.fit_rnd(self.adapt_x, self.adapt_y, num=5, old_params=self.old_params)
+        best_error, best_params = self.mreasoner.fit_grid(self.adapt_x, self.adapt_y, num=5)
         self.old_params = best_params
 
         self.adapt_cnt += 1
