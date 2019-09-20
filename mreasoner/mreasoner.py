@@ -5,6 +5,7 @@
 import copy
 import logging
 import os
+import platform
 import queue
 import subprocess
 import threading
@@ -16,6 +17,12 @@ import zipfile
 import numpy as np
 import scipy.optimize as so
 
+
+FASL_ENDINGS = {
+    'Darwin': 'dx64fsl',
+    'Windows': 'wx64fsl',
+    'Linux': 'lx64fsl'
+}
 
 def source_path(mreas_path='.mreasoner'):
     """ Determines the source path of mReasoner if existent. Downloads a copy if necessary.
@@ -149,8 +156,8 @@ class MReasoner():
         mreasoner_file = mreasoner_file.replace('\\', '/')
         self._send('(compile-file "{}")'.format(mreasoner_file))
 
-        fasl_file = [x for x in os.listdir(mreasoner_dir) if x.endswith('fsl')][0]
-        fasl_path = mreasoner_dir + os.sep + fasl_file
+        fasl_path = mreasoner_dir + os.sep + "+mReasoner.{}".format(FASL_ENDINGS[platform.system()])
+        fasl_path = fasl_path.replace('\\', '/')
         self._send('(load "{}")'.format(fasl_path))
         self._send('(defvar resp 0)')
 
