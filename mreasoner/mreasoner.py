@@ -92,6 +92,10 @@ class MReasoner():
             stderr=subprocess.STDOUT
         )
 
+        # Add debug stuff
+        self.received_messages = []
+        self.executed_commands = []
+
         # Instantiate the result queue
         self.resp_queue = queue.Queue()
 
@@ -105,6 +109,7 @@ class MReasoner():
                 # Read text from mReasoner output
                 text = proc.stdout.readline().decode('ascii').strip()
                 logger.debug('mReasoner:%s', text)
+                self.received_messages.append(text)
 
                 # Ignore comments and query results
                 if text.startswith(';'):
@@ -151,12 +156,15 @@ class MReasoner():
         self.readerstdout = threading.Thread(target=stdout_reader, args=(self.proc,), daemon=True)
         self.readerstdout.start()
 
-        # Load mReasoner and setup result variable
+        # Load mReasoner in CCL environment
         mreasoner_file = mreasoner_dir + os.sep + "+mReasoner.lisp"
-        mreasoner_file = mreasoner_file.replace('\\', '/')
-        self._send('(compile-file "{}")'.format(mreasoner_file))
-
         fasl_path = mreasoner_dir + os.sep + "+mReasoner.{}".format(FASL_ENDINGS[platform.system()])
+
+        # Compile mreasoner if not done before
+        if not os.path.exists(fasl_path):
+            mreasoner_file = mreasoner_file.replace('\\', '/')
+            self._send('(compile-file "{}")'.format(mreasoner_file))
+
         fasl_path = fasl_path.replace('\\', '/')
         self._send('(load "{}")'.format(fasl_path))
         self._send('(defvar resp 0)')
@@ -187,6 +195,7 @@ class MReasoner():
 
         # Normalize the command
         cmd.strip()
+        self.executed_commands.append(cmd)
 
         self.logger.debug('Send:%s', cmd)
         self.proc.stdin.write('{}\n'.format(cmd).encode('ascii'))
@@ -331,23 +340,27 @@ class MReasoner():
         for name, value in zip(param_names, params):
             self.set_param(name, value)
 
-    def _fit_fun(self, params, *args):
+    def _fit_fun(self, params, train_x, train_y, include_param=False):
         """ Fitting helper function. Receives parameter values and computes accuracy on given
         training and test data.
 
         Parameters
         ----------
-        x : list(float)
+        params : list(float)
             List of parameters.
+
+        include_params : boolean
+            Flag to indicate that params are to be included in results.
 
         Results
         -------
         float
             Predictive accuracy.
 
-        """
+        list(float), optional
+            Parameters
 
-        train_x, train_y = args
+        """
 
         # Set the parameters
         self.set_param_vec(params)
@@ -359,6 +372,10 @@ class MReasoner():
 
         inaccuracy = 1 - (score / len(train_x))
         self.logger.debug('Fitting-Eval: (p=%s): %f', params, inaccuracy)
+
+        if include_param:
+            return inaccuracy, params
+
         return inaccuracy
 
     def fit(self, train_x, train_y, num_fits=10):
@@ -427,7 +444,10 @@ class MReasoner():
                 for p_omega in np.linspace(*self.param_bounds[2], num):
                     for p_sigma in np.linspace(*self.param_bounds[3], num):
                         params = [p_epsilon, p_lambda, p_omega, p_sigma]
+                        start = time.time()
                         error = self._fit_fun(params, train_x, train_y)
+                        self.logger.debug('Grid fit iteration took {:.2f}s'.format(
+                            time.time() - start))
 
                         if error < best_error:
                             best_error = error
