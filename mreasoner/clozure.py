@@ -13,9 +13,9 @@ import logging
 
 
 DL_URLS = {
-    'Darwin': 'https://github.com/Clozure/ccl/releases/download/v1.12-dev.5/darwinx86.tar.gz',
-    'Windows': 'https://github.com/Clozure/ccl/releases/download/v1.12-dev.5/windows86.zip',
-    'Linux': 'https://github.com/Clozure/ccl/releases/download/v1.12-dev.5/linuxx86.tar.gz'
+    'Darwin': 'https://github.com/Clozure/ccl/releases/download/v1.12/ccl-1.12-darwinx86.tar.gz',
+    'Windows': 'https://github.com/Clozure/ccl/releases/download/v1.12/ccl-1.12-windowsx86.zip',
+    'Linux': 'https://github.com/Clozure/ccl/releases/download/v1.12/ccl-1.12-linuxx86.tar.gz'
 }
 
 class ClozureCL():
@@ -74,6 +74,7 @@ class ClozureCL():
 
         # Extract the 64 bit executable
         self.ccl_path = None
+        self.ccl_dir = os.path.normpath(self.ccl_dir + '/ccl')
         for fname in os.listdir(self.ccl_dir):
             fpath = self.ccl_dir + os.sep + fname
             if os.path.isdir(fpath) or fname.endswith('.image'):

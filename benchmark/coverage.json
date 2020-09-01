@@ -4,7 +4,7 @@
     "data.test": "data/Ragni2016.csv",
     "corresponding_data": true,
     "models": [
-        {"filename": "../ccobra_mreasoner.py", "args": {"n_samples": 1, "method": "grid", "fit_its": 1}}
+        {"filename": "../ccobra_mreasoner.py", "args": {"n_samples": 5, "method": "grid", "fit_its": 11, "num_threads": 2}}
     ],
     "domain_encoders": {
         "syllogistic": "%ccobra%/syllogistic/encoder_syl.py"
