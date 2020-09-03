@@ -8,7 +8,7 @@ import os
 import platform
 import queue
 import subprocess
-import threading
+import multiprocessing
 import time
 import select
 
@@ -18,14 +18,21 @@ import zipfile
 import numpy as np
 import scipy.optimize as so
 
-from . import lispcompiler
-
 
 FASL_ENDINGS = {
     'Darwin': 'dx64fsl',
     'Windows': 'wx64fsl',
     'Linux': 'lx64fsl'
 }
+
+DEFAULT_PARAMS = {
+    'epsilon': 0.0,
+    'lambda': 4.0,
+    'omega': 1.0,
+    'sigma': 0.0
+}
+
+PARAM_BOUNDS = [[0.0, 1.0], [0.1, 8.0], [0.0, 1.0], [0.0, 1.0]]
 
 def source_path(mreas_path='.mreasoner'):
     """ Determines the source path of mReasoner if existent. Downloads a copy if necessary.
@@ -86,7 +93,6 @@ class MReasoner():
 
         # Initialize logger instance
         self.logger = logging.getLogger(__name__)
-        self.param_bounds = [[0.0, 1.0], [0.1, 8.0], [0.0, 1.0], [0.0, 1.0]]
 
         # Load mReasoner in CCL environment
         mreasoner_file = mreasoner_dir + os.sep + "+mReasoner.lisp"
@@ -102,58 +108,68 @@ class MReasoner():
         out = self.wait_for_output('Licence, Version 2.0.', timeout=10)
         assert out == 'Licence, Version 2.0.'
 
-        # Initialize parameter values
-        self.DEFAULT_PARAMS = {
-            'epsilon': 0.0,
-            'lambda': 4.0,
-            'omega': 1.0,
-            'sigma': 0.0
-        }
-
     def wait_for_output(self, text, timeout=10):
-        def worker(proc, result):
+
+        manager = multiprocessing.Manager()
+        result_list = manager.list()
+
+        def worker(proc):
+            logger = logging.getLogger(__name__ + '-worker')
             while True:
                 line = proc.stdout.readline().decode('ascii').strip()
+                logger.debug('Read:%s', line)
+
                 if text in line:
-                    result.append(line)
+                    result_list.append(line)
                     return
 
-        result = []
-        th = threading.Thread(target=worker, args=(self.proc,result), daemon=True)
+        th = multiprocessing.Process(target=worker, args=(self.proc,), daemon=True)
         th.start()
-        th.join(timeout=timeout)
+        th.join(timeout=20)
 
-        return result[0]
+        if th.is_alive():
+            th.terminate()
+            print('WARNING: Timeout occurred.')
+            return None
+
+        return result_list[0]
 
     def query(self, premises, param_dict=None):
         if param_dict == None:
-            param_dict = self.DEFAULT_PARAMS
+            param_dict = DEFAULT_PARAMS
 
         # Prepare the command
         cmd = [
             "(progn",
-            "    (setf *stochastic* t)",
-            "    (setf +epsilon+ {})".format(param_dict['epsilon']),
-            "    (setf +lambda+ {})".format(param_dict['lambda']),
-            "    (setf +omega+ {})".format(param_dict['omega']),
-            "    (setf +sigma+ {})".format(param_dict['sigma']),
-            '    (format nil "QUERY_RESULT: ~{~A~^, ~}"',
-            "        (map 'list",
-            "            (lambda (x) (abbreviate x))",
-            "            (what-follows?",
-            "                (list",
-            "                    (parse '({}))".format(premises[0]),
-            "                    (parse '({})))))))".format(premises[1]),
+            "    (initialize-tracer)",
+            "    (reset-tracer)",
+            "    (let* ((premise-intensions (list (parse '({})) (parse '({})))))".format(premises[0], premises[1]),
+            "        (setf *stochastic* T)",
+            "        (setf +sigma+ {})".format(param_dict['sigma']),
+            "        (setf +lambda+ {})".format(param_dict['lambda']),
+            "        (setf +epsilon+ {})".format(param_dict['epsilon']),
+            "        (setf +omega+ {})".format(param_dict['omega']),
+            "        (what-follows? premise-intensions)",
+            "        (third (first (trace-output *tracer*)))",
+            "    )",
+            ")",
         ]
+
         cmd = '\n'.join(cmd)
 
         # Send the query command and wait for the output line
         self._send(cmd)
-        out = self.wait_for_output('QUERY_RESULT', timeout=10)
+        out = self.wait_for_output('Conclusion: ', timeout=10)
         self.logger.debug('Output line received: %s', out)
 
         # Clean up and return output
-        predictions = out[17:-1].split(', ')
+        idx = out.find('Conclusion: ')
+        predictions = [x for x in out[idx+12:-1].split(', ') if len(x) > 0]
+        self.logger.debug('Extracted predictions: %s', predictions)
+
+        if not predictions:
+            self.logger.warn('Empty predictions:%s', param_dict)
+
         return predictions
 
     def _send(self, cmd):
