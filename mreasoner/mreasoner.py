@@ -94,12 +94,19 @@ class MReasoner():
         # Initialize logger instance
         self.logger = logging.getLogger(__name__)
 
+        # Store member variables
+        self.ccl_path = ccl_path
+        self.mreasoner_dir = mreasoner_dir
+
+    def initialize(self):
+        self.logger.info('Initializing mReasoner')
+
         # Load mReasoner in CCL environment
-        mreasoner_file = mreasoner_dir + os.sep + "+mReasoner.lisp"
+        mreasoner_file = self.mreasoner_dir + os.sep + "+mReasoner.lisp"
 
         # Start mReasoner process
         self.proc = subprocess.Popen(
-            [ccl_path, '--load', mreasoner_file],
+            [self.ccl_path, '--load', mreasoner_file],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
@@ -109,7 +116,6 @@ class MReasoner():
         assert out == 'Licence, Version 2.0.'
 
     def wait_for_output(self, text, timeout=10):
-
         manager = multiprocessing.Manager()
         result_list = manager.list()
 
@@ -128,8 +134,8 @@ class MReasoner():
         th.join(timeout=20)
 
         if th.is_alive():
+            self.logger.warn('Timeout occurred.')
             th.terminate()
-            print('WARNING: Timeout occurred.')
             return None
 
         return result_list[0]
@@ -161,6 +167,18 @@ class MReasoner():
         self._send(cmd)
         out = self.wait_for_output('Conclusion: ', timeout=10)
         self.logger.debug('Output line received: %s', out)
+
+        # Catch timeout in wait_for_output
+        if out is None:
+            self.logger.warn(
+                'Timeout in query detected for "%s" with params "%s"', premises, param_dict)
+
+            # Reinitialize current mReasoner instance
+            self.terminate()
+            self.initialize()
+
+            # Try again
+            return self.query(premises, param_dict=param_dict)
 
         # Clean up and return output
         idx = out.find('Conclusion: ')
