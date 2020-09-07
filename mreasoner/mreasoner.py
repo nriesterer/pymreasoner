@@ -98,6 +98,10 @@ class MReasoner():
         self.ccl_path = ccl_path
         self.mreasoner_dir = mreasoner_dir
 
+        # Initialize mReasoner instance
+        self.proc = None
+        self.initialize()
+
     def initialize(self):
         self.logger.info('Initializing mReasoner')
 
