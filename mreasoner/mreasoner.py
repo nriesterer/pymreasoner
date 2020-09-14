@@ -54,7 +54,7 @@ def source_path(mreas_path='.mreasoner'):
         os.mkdir(mreas_path)
 
         # Download the mreasoner source
-        link = 'https://github.com/nriesterer/pymreasoner/raw/develop/mReasoner-2587fda.zip'
+        link = 'https://github.com/nriesterer/pymreasoner/raw/master/mReasoner-2587fda.zip'
         dl_target = mreas_path + os.sep + 'mReasoner.zip'
         urllib.request.urlretrieve(link, dl_target)
 
