@@ -130,8 +130,6 @@ class CCobraMReasoner(ccobra.CCobraModel):
 
         """
 
-        print('pre-training')
-
         # Check if fitting is deactivated
         if self.fit_its == 0 or self.evaluation_type == 'coverage':
             return
@@ -155,7 +153,7 @@ class CCobraMReasoner(ccobra.CCobraModel):
         # Fit the model
         self.fit()
 
-    def person_train(self, dataset, **kwargs):
+    def pre_train_person(self, dataset, **kwargs):
         """ Perform the person training of mReasoner.
 
         """

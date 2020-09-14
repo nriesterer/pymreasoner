@@ -13,11 +13,13 @@ This project aims at providing a Python-based interface to the LISP-based cognit
 
 File overview:
 
-- `ccobratest/`: CCOBRA model implementation
-- `mreasoner/`: Python package sources
-- `cli.py`: mReasoner command line interface
-- `mReasoner-r6684.zip`: mReasoner source code
-- `setup.py`: Python package installer
+- `benchmark/`: Example CCOBRA benchmarks.
+- `caches/`: Precomputed cache files.
+- `mreasoner/`: Python package sources.
+- `ccobra_mreasoner_cache.py`: Cached CCOBRA model.
+- `ccobra_mreasoner.py`: Uncached CCOBRA model.
+- `create_cache.py`: Helper module to create mReasoner prediction caches.
+- `mReasoner-2587fda.zip`: mReasoner source code taken from [https://github.com/skhemlani/mReasoner](https://github.com/skhemlani/mReasoner) (commit `2587fda`)
 
 ### Requirements
 
@@ -25,11 +27,12 @@ File overview:
 - scipy
 - numpy
 
-### Installation
+### Quickstart
 
-Download the repository and launch a terminal/cmd:
+To run the included benchmark analyses, download the repository and launch a terminal/cmd:
 
 ```
-$> cd /path/to/repository
-$> python setup.py install
+$> cd /path/to/repository/benchmark
+$> ccobra coverage.json
+$> ccobra adaption.json
 ```

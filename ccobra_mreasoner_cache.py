@@ -15,7 +15,7 @@ import numpy as np
 import mreasoner
 import create_cache
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class CCobraMReasoner(ccobra.CCobraModel):
     """ mReasoner CCOBRA model implementation.
@@ -52,9 +52,6 @@ class CCobraMReasoner(ccobra.CCobraModel):
         self.n_samples = n_samples
         self.fit_its = fit_its
 
-        # Prepare mReasoner parameters
-        self.params = copy.deepcopy(mreasoner.DEFAULT_PARAMS)
-
         # Initialize auxiliary variables
         self.n_pre_train_dudes = 0
         self.pre_train_data = np.zeros((64, 9))
@@ -65,11 +62,29 @@ class CCobraMReasoner(ccobra.CCobraModel):
         if cache_file:
             self.prediction_cache = np.load(cache_file)
             if self.prediction_cache.shape[0] != fit_its:
-                print('WARNING: fit_its mismatch between model and cache.')
-            fit_its = self.prediction_cache.shape[0]
+                logger.warning('WARNING: fit_its mismatch between model and cache.')
+            self.fit_its = self.prediction_cache.shape[0]
         else:
             self.prediction_cache = create_cache.generate_cache(self.fit_its, self.n_samples)
 
+        # Prepare mReasoner parameters
+        self.params = {}
+
+        for param_idx, param in enumerate(['epsilon', 'lambda', 'omega', 'sigma']):
+            default_value = mreasoner.DEFAULT_PARAMS[param]
+
+            conf_values = np.linspace(*mreasoner.PARAM_BOUNDS[param_idx], self.fit_its)
+            diffs = np.abs(conf_values - default_value)
+            closest_idxs = np.arange(len(conf_values))[diffs == diffs.min()]
+            closest_idx = np.random.choice(closest_idxs)
+
+            self.params[param] = (closest_idx, conf_values[closest_idx])
+            logger.debug('Default {}: def={} confs={} res={}'.format(
+                param, default_value, conf_values, self.params[param]))
+
+        self.best_param_dicts = []
+
+        # Prepare debugging variables
         self.start_time = None
 
     def end_participant(self, subj_id, model_log, **kwargs):
@@ -88,6 +103,7 @@ class CCobraMReasoner(ccobra.CCobraModel):
 
         # Fill model log
         model_log.update({x: y[1] for x, y in self.params.items()})
+        model_log['best_params'] = [{y: z[1] for y, z in x.items()} for x in self.best_param_dicts]
 
     def start_participant(self, **kwargs):
         """ Model setup method. Stores the time for use in end_participant().
@@ -129,10 +145,12 @@ class CCobraMReasoner(ccobra.CCobraModel):
         # Fit the model
         self.fit()
 
-    def person_train(self, dataset, **kwargs):
+    def pre_train_person(self, dataset, **kwargs):
         """ Perform the person training of mReasoner.
 
         """
+
+        print('Person training...')
 
         # Check if fitting is deactivated
         if self.fit_its == 0:
@@ -164,9 +182,7 @@ class CCobraMReasoner(ccobra.CCobraModel):
         best_param_dicts = []
 
         for idx_epsilon, p_epsilon in enumerate(np.linspace(*mreasoner.PARAM_BOUNDS[0], self.fit_its)):
-            print('epsilon:', p_epsilon)
             for idx_lambda, p_lambda  in enumerate(np.linspace(*mreasoner.PARAM_BOUNDS[1], self.fit_its)):
-                print('   lambda:', p_lambda)
                 for idx_omega, p_omega in enumerate(np.linspace(*mreasoner.PARAM_BOUNDS[2], self.fit_its)):
                     for idx_sigma, p_sigma in enumerate(np.linspace(*mreasoner.PARAM_BOUNDS[3], self.fit_its)):
                         param_dict = {
@@ -185,7 +201,6 @@ class CCobraMReasoner(ccobra.CCobraModel):
                         score = np.sum(np.mean(train_data * pred_mask, axis=1))
 
                         if score > best_score:
-                            print('New best ({}): {}'.format(score, str(param_dict)))
                             best_score = score
                             best_param_dicts = [param_dict]
                         elif score == best_score:
@@ -193,8 +208,6 @@ class CCobraMReasoner(ccobra.CCobraModel):
 
         # Randomly select ont of the best param dicts
         self.params = best_param_dicts[int(np.random.randint(0, len(best_param_dicts)))]
-        print(best_param_dicts)
-        exit()
         self.best_param_dicts = best_param_dicts
 
     def predict(self, item, **kwargs):

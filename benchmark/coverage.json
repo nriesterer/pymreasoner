@@ -1,10 +1,8 @@
 {
     "type": "coverage",
-    "data.train": "data/Ragni2016.csv",
     "data.test": "data/Ragni2016.csv",
-    "corresponding_data": true,
     "models": [
-        {"filename": "../ccobra_mreasoner.py", "args": {"n_samples": 5, "method": "grid", "fit_its": 11, "num_threads": 2}}
+        {"filename": "../ccobra_mreasoner_cache.py", "args": {"cache_file": "caches/2020-09-09-cache-11-10.npy"}}
     ],
     "domain_encoders": {
         "syllogistic": "%ccobra%/syllogistic/encoder_syl.py"
